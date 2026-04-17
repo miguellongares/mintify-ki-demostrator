@@ -1,0 +1,58 @@
+services:
+  # LLM inference runs via Docker Desktop Model Runner (Metal GPU on Apple Silicon).
+  # Setup (one-time): docker model pull ai/qwen2.5
+  # Docker Desktop exposes the runner at model-runner.docker.internal (accessible from containers)
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: mintify-qdrant
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    ports:
+      - "6333:6333"   # REST API + dashboard
+      - "6334:6334"   # gRPC
+    restart: unless-stopped
+
+  pipelines:
+    build:
+      context: ./pipelines
+      dockerfile: Dockerfile
+    container_name: mintify-pipelines
+    depends_on:
+      qdrant:
+        condition: service_started
+    environment:
+      - PIPELINES_API_KEY=mintify-pipeline-key
+      - OLLAMA_BASE_URL=http://model-runner.docker.internal/engines/llama.cpp
+      - QDRANT_URL=http://qdrant:6333
+      - PIPELINES_DIR=/app/pipelines
+    volumes:
+      - ./pipelines:/app/pipelines
+      - ./data/uploads:/app/uploads
+    ports:
+      - "9099:9099"
+    restart: unless-stopped
+
+  open-webui:
+    build:
+      context: ./open-webui-src
+      dockerfile: Dockerfile
+    container_name: mintify-webui
+    depends_on:
+      - pipelines
+      - qdrant
+    environment:
+      - OLLAMA_BASE_URL=                        # disabled — all chat goes through pipeline
+      - OPENAI_API_BASE_URL=http://pipelines:9099
+      - OPENAI_API_KEY=mintify-pipeline-key
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - DEFAULT_LOCALE=de
+      - WEBUI_NAME=MINTIFY
+      - ENABLE_COMMUNITY_SHARING=false
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+
+volumes: {}

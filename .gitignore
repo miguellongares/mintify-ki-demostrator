@@ -1,0 +1,9 @@
+# Secrets
+.env
+
+# Python
+*.pyc
+__pycache__/
+
+# macOS
+.DS_Store

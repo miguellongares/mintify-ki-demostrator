@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdftotext \"/Users/miguellongares/Projects/mintify-ki-demostrator/documets_about_the_project/pdf/09-2025 Entwicklung eines KI Demonstrators fu_r finanzielle Bildung v1.0.pdf\" -)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebSearch",
+      "WebFetch(domain:docs.openwebui.com)",
+      "Bash(curl:*)",
+      "Bash(docker exec mintify-pipelines:*)"
+    ]
+  }
+}
