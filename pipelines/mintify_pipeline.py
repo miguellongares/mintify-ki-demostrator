@@ -2,9 +2,9 @@
 MINTIFY RAG Pipeline
 --------------------
 Appears as a model in Open Web UI's chat dropdown automatically.
-Handles its own RAG: PDF indexing → Qdrant vector search → context injection → Ollama streaming.
+Handles its own RAG: PDF indexing → Qdrant vector search → context injection → vLLM streaming.
 
-on_startup() — loads embedding model, connects to Qdrant & Ollama, indexes existing PDFs
+on_startup() — loads embedding model, connects to Qdrant & vLLM, indexes existing PDFs
 pipe()        — called per message: retrieves context, streams enriched response
 """
 
@@ -18,8 +18,8 @@ from pydantic import BaseModel
 
 class Pipeline:
     class Valves(BaseModel):
-        OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://model-runner.docker.internal/engines/llama.cpp")
-        LLM_MODEL: str = "ai/qwen2.5"
+        VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8000")
+        LLM_MODEL: str = "Qwen/Qwen2.5-0.5B-Instruct"
         EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
         QDRANT_URL: str = os.getenv("QDRANT_URL", "http://qdrant:6333")
         COLLECTION_NAME: str = "mintify_rag"
@@ -76,10 +76,10 @@ class Pipeline:
             )
             print(f"[MINTIFY] Created Qdrant collection '{self.valves.COLLECTION_NAME}'")
 
-        print("[MINTIFY] Connecting to LLM (Docker Model Runner)...")
+        print("[MINTIFY] Connecting to LLM (vLLM on RunPod via SSH tunnel)...")
         self.llm_client = OpenAI(
-            base_url=f"{self.valves.OLLAMA_BASE_URL}/v1",
-            api_key="ollama",
+            base_url=f"{self.valves.VLLM_BASE_URL}/v1",
+            api_key="vllm",
         )
 
         os.makedirs(self.valves.UPLOAD_DIR, exist_ok=True)
@@ -123,11 +123,11 @@ class Pipeline:
         enriched = [{"role": "system", "content": enriched_system}]
         enriched += [m for m in messages if m.get("role") != "system"]
 
-        print(f"[MINTIFY] Sending {len(enriched)} messages to Ollama (model: {self.valves.LLM_MODEL})")
+        print(f"[MINTIFY] Sending {len(enriched)} messages to vLLM (model: {self.valves.LLM_MODEL})")
         print(f"[MINTIFY] System prompt length: {len(enriched_system)} chars")
         print(f"{'='*60}\n")
 
-        return self._stream_ollama(enriched, body)
+        return self._stream_vllm(enriched, body)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ class Pipeline:
 
         return "\n\n---\n\n".join(parts), hits_info
 
-    def _stream_ollama(self, messages: list, body: dict) -> Generator:
+    def _stream_vllm(self, messages: list, body: dict) -> Generator:
         try:
             stream = self.llm_client.chat.completions.create(
                 model=self.valves.LLM_MODEL,
@@ -186,7 +186,7 @@ class Pipeline:
                 if delta:
                     yield delta
         except Exception as e:
-            print(f"[MINTIFY] ERROR in _stream_ollama: {e}")
+            print(f"[MINTIFY] ERROR in _stream_vllm: {e}")
             yield f"Fehler bei der Modellanfrage: {e}"
 
     def _index_all_files(self):
