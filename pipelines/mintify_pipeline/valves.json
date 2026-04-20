@@ -1,12 +1,12 @@
 {
-    "OLLAMA_BASE_URL": "http://model-runner.docker.internal/engines/llama.cpp",
-    "LLM_MODEL": "ai/qwen2.5",
+    "VLLM_BASE_URL": "http://host.docker.internal:8000",
+    "LLM_MODEL": "Qwen/Qwen2.5-0.5B-Instruct",
     "EMBEDDING_MODEL": "all-MiniLM-L6-v2",
-    "QDRANT_URL": "http://qdrant:6333", 
+    "QDRANT_URL": "http://qdrant:6333",
     "COLLECTION_NAME": "mintify_rag",
-    "TOP_K": 5, 
-    "CHUNK_SIZE": 800, 
-    "CHUNK_OVERLAP": 100, 
-    "UPLOAD_DIR": "/app/uploads", 
+    "TOP_K": 5,
+    "CHUNK_SIZE": 800,
+    "CHUNK_OVERLAP": 100,
+    "UPLOAD_DIR": "/app/uploads",
     "SYSTEM_PROMPT": "Du bist ein hilfreicher KI-Assistent f\u00fcr finanzielle Bildung, entwickelt im Rahmen des MINTIFY-Forschungsprojekts der Hochschule Bonn-Rhein-Sieg.\n\nBeantworte alle Fragen ausschlie\u00dflich auf Deutsch, klar und verst\u00e4ndlich.\n\nNutze den folgenden Kontext aus den hinterlegten Dokumenten, um die Frage des Nutzers zu beantworten:\n\n[KONTEXT]\n{context}\n[/KONTEXT]\n\nFalls die Antwort nicht im Kontext zu finden ist, weise ehrlich darauf hin und beantworte die Frage trotzdem so gut wie m\u00f6glich auf Basis deines Wissens. Gib bei Verwendung von Kontextinformationen stets die Quelldokumente an."
 }

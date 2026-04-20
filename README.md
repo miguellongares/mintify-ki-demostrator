@@ -12,10 +12,8 @@ Built on **Open Web UI v0.6.5** with full source access for frontend customizati
 Browser → Open Web UI (Frontend, port 3000)
               ↓ OpenAI-compatible API
          Pipelines (RAG + LLM, port 9099)
-              ↓ OpenAI-compatible API
-         Docker Model Runner (Metal GPU, host)
-              ↓ vector search
-         Qdrant (Vector DB, port 6333)
+              ↓ OpenAI-compatible API          ↓ vector search
+         vLLM on RunPod (SSH tunnel :8000)   Qdrant (Vector DB, port 6333)
 ```
 
 | Component | Role |
@@ -23,14 +21,15 @@ Browser → Open Web UI (Frontend, port 3000)
 | `mintify-webui` | Frontend — Open Web UI v0.6.5 built from source |
 | `mintify-pipelines` | RAG pipeline — embeds queries, retrieves context, streams responses |
 | `mintify-qdrant` | Vector database — stores PDF chunk embeddings |
-| Docker Model Runner | LLM inference on Apple Silicon GPU (host-side, Metal/MLX) |
+| vLLM on RunPod | LLM inference on remote GPU, reached via SSH tunnel (`scripts/runpod-tunnel.sh`) |
 
 ---
 
 ## Prerequisites
 
 - [Docker Desktop](https://docs.docker.com/get-docker/) 4.40+ with Docker Compose v2
-- Apple Silicon Mac (M-series) with at least 16 GB RAM
+- A RunPod instance with vLLM installed at `/workspace/vllm-lab` (venv: `venv`)
+- SSH access to the RunPod (`~/.ssh/.ssh_gpu/id_ed25519`)
 - ~10 GB free disk space
 
 ---
@@ -52,17 +51,15 @@ cp .env.example .env
 openssl rand -hex 32
 ```
 
-### 3. Enable Docker Model Runner
-
-Open Docker Desktop → **Settings → Features in Development → Enable Docker Model Runner** → Apply & Restart.
-
-### 4. Pull the language model
+### 3. Start vLLM on RunPod and open the SSH tunnel
 
 ```bash
-docker model pull ai/qwen2.5
+./scripts/runpod-tunnel.sh
 ```
 
-### 5. Build and start all containers
+This will start vLLM on RunPod (if not already running) and forward port 8000 to localhost. Keep this terminal open while the stack is running.
+
+### 4. Build and start all containers
 
 ```bash
 docker compose up --build -d
@@ -157,6 +154,7 @@ mintify-ki-demostrator/
 │   └── mintify_pipeline/
 │       └── valves.json             # Pipeline configuration
 ├── scripts/
+│   ├── runpod-tunnel.sh            # Start vLLM on RunPod + open SSH port-forward tunnel
 │   └── upload-document.sh          # Copy PDFs into pipeline for RAG indexing
 └── data/                           # Runtime data (gitignored)
     ├── uploads/                    # PDFs for RAG
@@ -168,8 +166,9 @@ mintify-ki-demostrator/
 
 ## Verification checklist
 
+- [ ] `./scripts/runpod-tunnel.sh` — prints "vLLM is ready." and opens tunnel
+- [ ] `curl http://localhost:8000/v1/models` — vLLM responds through the tunnel
 - [ ] `docker compose ps` — all containers show `running`
-- [ ] `docker model list` — `ai/qwen2.5` listed
 - [ ] `http://localhost:6333/dashboard` — Qdrant dashboard loads
 - [ ] `curl http://localhost:9099/models` — pipeline responds
 - [ ] `http://localhost:3000` — loads in German, titled "MINTIFY"

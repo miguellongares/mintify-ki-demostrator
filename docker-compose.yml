@@ -1,7 +1,6 @@
 services:
-  # LLM inference runs via Docker Desktop Model Runner (Metal GPU on Apple Silicon).
-  # Setup (one-time): docker model pull ai/qwen2.5
-  # Docker Desktop exposes the runner at model-runner.docker.internal (accessible from containers)
+  # LLM inference runs on a RunPod instance via vLLM (OpenAI-compatible API on port 8000).
+  # Setup (one-time): run scripts/runpod-tunnel.sh to start vLLM and open the SSH tunnel.
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -23,7 +22,7 @@ services:
         condition: service_started
     environment:
       - PIPELINES_API_KEY=mintify-pipeline-key
-      - OLLAMA_BASE_URL=http://model-runner.docker.internal/engines/llama.cpp
+      - VLLM_BASE_URL=http://host.docker.internal:8000
       - QDRANT_URL=http://qdrant:6333
       - PIPELINES_DIR=/app/pipelines
     volumes:
