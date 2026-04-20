@@ -19,7 +19,11 @@ from pydantic import BaseModel
 
 class Pipeline:
     class Valves(BaseModel):
-        VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8000")
+        VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8002")
+        VLLM_BASE_URLS: str = os.getenv(
+            "VLLM_BASE_URLS",
+            "http://host.docker.internal:8002,http://host.docker.internal:8004",
+        )
         EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
         QDRANT_URL: str = os.getenv("QDRANT_URL", "http://qdrant:6333")
         COLLECTION_NAME: str = "mintify_rag"
@@ -48,18 +52,32 @@ class Pipeline:
         self.qdrant = None
         self.llm_client = None
         self._indexed_hashes: set = set()
+        self._model_url_map: dict = {}  # model_id → base_url
 
     def pipelines(self) -> list:
-        """Returns one entry per model currently loaded in vLLM."""
-        try:
-            import httpx
-            resp = httpx.get(f"{self.valves.VLLM_BASE_URL}/v1/models", timeout=5)
-            resp.raise_for_status()
-            models = resp.json().get("data", [])
-            return [{"id": m["id"].replace("/", "__"), "name": f" – {m['id']}"} for m in models]
-        except Exception as e:
-            print(f"[MINTIFY] Could not fetch models from vLLM: {e}")
+        """Returns one entry per model across all vLLM endpoints."""
+        import httpx
+
+        urls = [u.strip() for u in self.valves.VLLM_BASE_URLS.split(",") if u.strip()]
+        if not urls:
+            urls = [self.valves.VLLM_BASE_URL]
+
+        entries = []
+        self._model_url_map = {}
+        for url in urls:
+            try:
+                resp = httpx.get(f"{url}/v1/models", timeout=5)
+                resp.raise_for_status()
+                for m in resp.json().get("data", []):
+                    mid = m["id"]
+                    self._model_url_map[mid] = url
+                    entries.append({"id": mid.replace("/", "__"), "name": f" – {mid}"})
+            except Exception as e:
+                print(f"[MINTIFY] Could not fetch models from {url}: {e}")
+
+        if not entries:
             return [{"id": "unavailable", "name": "vLLM unavailable"}]
+        return entries
 
     def _load_valves(self) -> dict:
         import json
@@ -143,7 +161,8 @@ class Pipeline:
         print(f"[MINTIFY] System prompt length: {len(enriched_system)} chars")
         print(f"{'='*60}\n")
 
-        return self._stream_vllm(enriched, body, actual_model)
+        base_url = self._model_url_map.get(actual_model, self.valves.VLLM_BASE_URL)
+        return self._stream_vllm(enriched, body, actual_model, base_url)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
@@ -189,9 +208,12 @@ class Pipeline:
 
         return "\n\n---\n\n".join(parts), hits_info
 
-    def _stream_vllm(self, messages: list, body: dict, model: str) -> Generator:
+    def _stream_vllm(self, messages: list, body: dict, model: str, base_url: str = None) -> Generator:
+        from openai import OpenAI
+        url = base_url or self.valves.VLLM_BASE_URL
+        client = OpenAI(base_url=f"{url}/v1", api_key="vllm")
         try:
-            stream = self.llm_client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 stream=True,
@@ -202,7 +224,7 @@ class Pipeline:
                 if delta:
                     yield delta
         except Exception as e:
-            print(f"[MINTIFY] ERROR in _stream_vllm: {e}")
+            print(f"[MINTIFY] ERROR in _stream_vllm (url={url}, model={model}): {e}")
             yield f"Fehler bei der Modellanfrage: {e}"
 
     def _index_all_files(self):

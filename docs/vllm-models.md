@@ -1,170 +1,319 @@
-# vLLM Model Connection & Adding New Models
+# Multi-Model vLLM Setup — MINTIFY
 
-## How the connection works
+This document explains how two vLLM model instances run simultaneously on RunPod, how they are exposed to the Docker stack via SSH tunnels, and how the pipeline discovers and routes messages to the correct model.
 
-### 1. SSH tunnel (`scripts/runpod-tunnel.sh`)
+---
 
-The pipeline container cannot reach RunPod directly. An SSH port-forward is opened on the **host machine** that maps a local port to vLLM running on the RunPod instance. Docker containers then reach it via `host.docker.internal`.
+## Architecture overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  RunPod GPU (46 068 MiB VRAM)                                       │
+│                                                                     │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────┐  │
+│  │  tmux: vllm-8002            │  │  tmux: vllm-8004            │  │
+│  │  vllm serve                 │  │  vllm serve                 │  │
+│  │  Qwen/Qwen3-1.7B            │  │  Qwen/Qwen2.5-3B-Instruct  │  │
+│  │  --port 8002                │  │  --port 8004                │  │
+│  │  --gpu-memory-utilization   │  │  --gpu-memory-utilization   │  │
+│  │    0.40  (~18 400 MiB)      │  │    0.45  (~20 700 MiB)      │  │
+│  └────────────┬────────────────┘  └────────────┬────────────────┘  │
+│               │ :8002                           │ :8004             │
+└───────────────┼─────────────────────────────────┼───────────────────┘
+                │ SSH port-forward                │ SSH port-forward
+                │ (runpod-tunnel.sh)              │ (runpod-tunnel.sh)
+                ▼                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Mac host (localhost)                                               │
+│  localhost:8002 ──────────────────────────────────────────────────▶ │
+│  localhost:8004 ──────────────────────────────────────────────────▶ │
+└─────────────┬───────────────────────────────────────────────────────┘
+              │ host.docker.internal
+              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Docker network                                                     │
+│                                                                     │
+│  ┌──────────────────┐    ┌───────────────────┐    ┌─────────────┐  │
+│  │  open-webui      │───▶│  pipelines        │    │  qdrant     │  │
+│  │  :3000           │    │  :9099            │───▶│  :6333      │  │
+│  │                  │    │                   │    │             │  │
+│  │  chat UI         │    │  mintify_pipeline │    │  vector DB  │  │
+│  └──────────────────┘    │                   │    └─────────────┘  │
+│                          │  pipelines()      │                     │
+│                          │  ├─ :8002/models  │                     │
+│                          │  └─ :8004/models  │                     │
+│                          │                   │                     │
+│                          │  pipe()           │                     │
+│                          │  ├─ Qwen3-1.7B ──────────▶ :8002       │
+│                          │  └─ Qwen2.5-3B ─────────▶ :8004       │
+│                          └───────────────────┘                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Request flow (step by step)
+
+```
+User sends message in Open Web UI
+        │
+        ▼
+Open Web UI (port 3000)
+  → POST /api/chat  to pipelines container (port 9099)
+        │
+        ▼
+mintify_pipeline.pipe()
+  1. Embed user query with all-MiniLM-L6-v2 (sentence-transformers)
+  2. Query Qdrant → retrieve top-K relevant chunks
+  3. Inject chunks into system prompt
+  4. Look up which vLLM port serves the selected model (_model_url_map)
+  5. Stream response from the correct vLLM instance
+        │
+        ├─── model = Qwen/Qwen3-1.7B ──────▶ host.docker.internal:8002
+        └─── model = Qwen/Qwen2.5-3B ──────▶ host.docker.internal:8004
+```
+
+---
+
+## GPU memory allocation
+
+The RunPod pod has **46 068 MiB** total VRAM. Each vLLM instance uses
+`--gpu-memory-utilization` to cap how much of the total GPU memory it
+pre-allocates. The remaining capacity after model weights is used for the
+KV cache (attention state during inference).
+
+| Instance | Model | Port | `--gpu-memory-utilization` | Allocated | Model weights (fp16) | KV cache |
+|---|---|---|---|---|---|---|
+| vllm-8002 | Qwen/Qwen3-1.7B | 8002 | **0.40** | ~18 427 MiB | ~3 400 MiB | ~15 000 MiB |
+| vllm-8004 | Qwen/Qwen2.5-3B-Instruct | 8004 | **0.45** | ~20 731 MiB | ~6 000 MiB | ~14 700 MiB |
+| **Total** | | | | **~39 158 MiB (85%)** | | |
+
+15% (~6 900 MiB) is left free for CUDA overhead, PyTorch internals, and the
+OS.
+
+> **Rule of thumb:** sum of all `gpu-memory-utilization` values must stay
+> below `1.0`. Keep the total ≤ 0.90 to avoid OOM during model load.
+
+---
+
+## `scripts/runpod-tunnel.sh`
+
+### What it does
+
+1. Defines two model instances as a bash array (model, port, GPU util, tmux session name)
+2. SSH-checks each port — if vLLM is already responding, skips the launch
+3. Kills any stale tmux session with the same name, then starts a fresh one
+4. Polls each port until vLLM responds (up to 10 minutes)
+5. Opens **one SSH connection** forwarding all ports simultaneously (blocks until Ctrl+C)
+
+### Key snippet — instance definitions
 
 ```bash
-# Key variables
-RUNPOD_HOST="63.141.33.23"
-RUNPOD_PORT="22171"
-VLLM_PORT="8002"          # local port ↔ RunPod vLLM port
-
-# The tunnel itself (blocks until Ctrl+C)
-ssh -N -L "${VLLM_PORT}:localhost:${VLLM_PORT}" \
-    -p ${RUNPOD_PORT} -i ${SSH_KEY} \
-    root@${RUNPOD_HOST}
-```
-
-The script also starts vLLM on RunPod if it isn't already running:
-
-```bash
-vllm serve Qwen/Qwen2.5-3B-Instruct \
-    --host 0.0.0.0 \
-    --port ${VLLM_PORT} \
-    --enforce-eager
-```
-
-### 2. Docker Compose environment (`docker-compose.yml`)
-
-The pipelines container receives the vLLM address via an environment variable:
-
-```yaml
-environment:
-  - VLLM_BASE_URL=http://host.docker.internal:8002
-```
-
-`host.docker.internal` resolves to the Docker host — where the SSH tunnel is listening.
-
-### 3. OpenAI client (`pipelines/mintify_pipeline.py`, `on_startup`)
-
-The pipeline connects to vLLM using the standard OpenAI SDK, which vLLM is compatible with:
-
-```python
-# on_startup() — line 93
-self.llm_client = OpenAI(
-    base_url=f"{self.valves.VLLM_BASE_URL}/v1",   # e.g. http://host.docker.internal:8002/v1
-    api_key="vllm",                                # vLLM accepts any non-empty key
+INSTANCES=(
+    "Qwen/Qwen3-1.7B:8002:0.40:vllm-8002"
+    "Qwen/Qwen2.5-3B-Instruct:8004:0.45:vllm-8004"
 )
 ```
 
-### 4. Model discovery (`pipelines()` method)
+Each entry is colon-separated: `MODEL:PORT:GPU_MEM_UTIL:TMUX_SESSION`.
 
-The pipeline is a **manifold** type — it calls vLLM's model list endpoint every time Open Web UI refreshes the dropdown. Whatever is loaded in vLLM appears automatically:
+### Key snippet — starting a vLLM instance
 
-```python
-# pipelines() — line 52
-def pipelines(self) -> list:
-    resp = httpx.get(f"{self.valves.VLLM_BASE_URL}/v1/models", timeout=5)
-    models = resp.json().get("data", [])
-    # Slashes in HuggingFace model IDs (e.g. "Qwen/Qwen2.5-3B-Instruct")
-    # are replaced with __ to avoid breaking HTTP routing.
-    return [{"id": m["id"].replace("/", "__"), "name": f" – {m['id']}"} for m in models]
+```bash
+$SSH "tmux kill-session -t ${TMUX_SESSION} 2>/dev/null || true"
+$SSH "tmux new-session -d -s ${TMUX_SESSION} \
+    'cd /workspace/vllm-lab && source venv/bin/activate && \
+     HUGGINGFACE_HUB_CACHE=/workspace/hf-cache \
+     vllm serve ${MODEL} \
+       --host 0.0.0.0 \
+       --port ${PORT} \
+       --gpu-memory-utilization ${GPU_MEM} \
+       --enforce-eager'"
 ```
 
-### 5. Request routing (`pipe()` method)
+`--enforce-eager` disables CUDA graph capture — this slows per-token inference
+slightly but dramatically reduces cold-start time (no warmup graph build).
+Recommended when loading multiple models.
 
-When the user sends a message, `pipe()` receives the selected model ID, reverses the `__` sanitization, and forwards the request to vLLM:
+### Key snippet — multi-port SSH tunnel
 
-```python
-# pipe() — strips pipeline prefix and restores the slash
-actual_model = model_id.removeprefix(f"{self.id}.").replace("__", "/")
-# e.g. "mintify_pipeline.Qwen__Qwen2.5-3B-Instruct" → "Qwen/Qwen2.5-3B-Instruct"
+```bash
+ssh \
+    -N \
+    -L "8002:localhost:8002" \
+    -L "8004:localhost:8004" \
+    -p ${RUNPOD_PORT} -i ${SSH_KEY} \
+    -o StrictHostKeyChecking=no \
+    -o ServerAliveInterval=60 \
+    -o ServerAliveCountMax=60 \
+    root@${RUNPOD_HOST}
 ```
+
+`-N` means "no remote command" — the SSH process just holds the port-forwards
+open. `-L local:remote:remoteport` binds a local port to a port on the remote
+host. Both ports are forwarded in a single connection.
 
 ---
 
-## How to add more models
+## `pipelines/mintify_pipeline.py`
 
-There are two levels: loading a model into vLLM on RunPod, and (optionally) serving multiple models simultaneously.
+### New valve: `VLLM_BASE_URLS`
 
-### Option A — Replace the current model
-
-Edit `scripts/runpod-tunnel.sh` and change the model name in the `vllm serve` command:
-
-```bash
-vllm serve mistralai/Mistral-7B-Instruct-v0.3 \
-    --host 0.0.0.0 \
-    --port ${VLLM_PORT} \
-    --enforce-eager
+```python
+class Valves(BaseModel):
+    VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8002")
+    VLLM_BASE_URLS: str = os.getenv(
+        "VLLM_BASE_URLS",
+        "http://host.docker.internal:8002,http://host.docker.internal:8004",
+    )
+    ...
 ```
 
-Run the script again. The new model will be downloaded from Hugging Face (cached in `/workspace/hf-cache` on RunPod) and served. After the tunnel is open, refresh the OWUI dropdown — the new model appears automatically.
+`VLLM_BASE_URLS` is a comma-separated list of all vLLM endpoints. It can be
+changed at runtime in **Admin Panel → Pipelines → MINTIFY** without restarting
+the container. `VLLM_BASE_URL` (singular) is kept as a fallback for
+backwards-compatibility.
 
-> **Note:** vLLM downloads from Hugging Face on first use. Gated models (e.g. Llama 3) require a HF token:
-> ```bash
-> HUGGINGFACE_TOKEN=hf_xxx vllm serve meta-llama/Meta-Llama-3-8B-Instruct ...
-> ```
+### New instance variable: `_model_url_map`
 
-### Option B — Serve multiple models at once (recommended for comparison)
-
-vLLM can serve several models in parallel if you run multiple instances on different ports. Update the tunnel script to forward each port:
-
-```bash
-# In scripts/runpod-tunnel.sh — replace the single tunnel with multi-port
-ssh -N \
-    -L 8002:localhost:8002 \
-    -L 8003:localhost:8003 \
-    ${SSH_OPTS} "${RUNPOD_USER}@${RUNPOD_HOST}"
+```python
+def __init__(self):
+    ...
+    self._model_url_map: dict = {}  # model_id → base_url
 ```
 
-Start each model in its own tmux window on RunPod:
+This dictionary is populated by `pipelines()` and consumed by `pipe()`. It
+maps a raw model ID (e.g. `"Qwen/Qwen3-1.7B"`) to the base URL of the vLLM
+instance that serves it (e.g. `"http://host.docker.internal:8002"`).
 
-```bash
-# Window 1 — 3B model
-vllm serve Qwen/Qwen2.5-3B-Instruct --host 0.0.0.0 --port 8002 --enforce-eager
-
-# Window 2 — 7B model
-vllm serve mistralai/Mistral-7B-Instruct-v0.3 --host 0.0.0.0 --port 8003 --enforce-eager
-```
-
-Then update `pipelines()` to query both endpoints and merge the lists:
+### Updated `pipelines()` — discovers models from all endpoints
 
 ```python
 def pipelines(self) -> list:
-    endpoints = [
-        self.valves.VLLM_BASE_URL,          # http://host.docker.internal:8002
-        "http://host.docker.internal:8003",  # second vLLM instance
-    ]
-    result = []
-    for base_url in endpoints:
+    import httpx
+
+    urls = [u.strip() for u in self.valves.VLLM_BASE_URLS.split(",") if u.strip()]
+    if not urls:
+        urls = [self.valves.VLLM_BASE_URL]
+
+    entries = []
+    self._model_url_map = {}
+
+    for url in urls:
         try:
-            resp = httpx.get(f"{base_url}/v1/models", timeout=5)
+            resp = httpx.get(f"{url}/v1/models", timeout=5)
             resp.raise_for_status()
             for m in resp.json().get("data", []):
-                result.append({
-                    "id": m["id"].replace("/", "__"),
-                    "name": f" – {m['id']}",
-                    "_base_url": base_url,   # store so pipe() knows where to send
+                mid = m["id"]
+                self._model_url_map[mid] = url          # store the URL for later routing
+                entries.append({
+                    "id": mid.replace("/", "__"),        # "/" → "__" (HTTP-safe)
+                    "name": f" – {mid}",
                 })
         except Exception as e:
-            print(f"[MINTIFY] Could not reach {base_url}: {e}")
-    return result
+            print(f"[MINTIFY] Could not fetch models from {url}: {e}")
+
+    return entries if entries else [{"id": "unavailable", "name": "vLLM unavailable"}]
 ```
 
-You would also need `pipe()` to look up the correct base URL for the selected model and use a matching OpenAI client, rather than the single `self.llm_client`.
+Open Web UI calls `pipelines()` every time it refreshes the model dropdown.
+If one vLLM instance is down, it is silently skipped and the remaining models
+still appear.
 
-### Option C — Pre-download models and switch without re-downloading
+### Updated `pipe()` — routes to the correct endpoint
 
-On RunPod, pre-download models to the shared cache directory so switching is fast:
+```python
+# Strip manifold prefix and reverse slash sanitization
+actual_model = model_id.removeprefix(f"{self.id}.").replace("__", "/")
+# e.g. "mintify_pipeline.Qwen__Qwen3-1.7B" → "Qwen/Qwen3-1.7B"
 
-```bash
-# On RunPod — pre-download without serving
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct \
-    --cache-dir /workspace/hf-cache
+# Look up which vLLM instance serves this model
+base_url = self._model_url_map.get(actual_model, self.valves.VLLM_BASE_URL)
+
+return self._stream_vllm(enriched, body, actual_model, base_url)
 ```
 
-Then change the model in the `vllm serve` command and restart. The model loads from cache in seconds instead of downloading again.
+### Updated `_stream_vllm()` — creates a per-request OpenAI client
+
+```python
+def _stream_vllm(self, messages, body, model, base_url=None):
+    from openai import OpenAI
+    url = base_url or self.valves.VLLM_BASE_URL
+    client = OpenAI(base_url=f"{url}/v1", api_key="vllm")
+    try:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            temperature=body.get("temperature", 0.7),
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+    except Exception as e:
+        print(f"[MINTIFY] ERROR in _stream_vllm (url={url}, model={model}): {e}")
+        yield f"Fehler bei der Modellanfrage: {e}"
+```
+
+vLLM exposes an OpenAI-compatible API, so the standard `openai` Python SDK
+works without any modifications. `api_key="vllm"` is a placeholder — vLLM
+accepts any non-empty string.
 
 ---
 
-## Quick reference
+## vLLM flags reference
 
-| What you want | Where to change |
-|---|---|
-| Change which model vLLM serves | `scripts/runpod-tunnel.sh` — `vllm serve <model>` |
-| Change the vLLM port | `scripts/runpod-tunnel.sh` (`VLLM_PORT`) and `docker-compose.yml` (`VLLM_BASE_URL`) |
-| Change the base URL at runtime | Admin Panel → Pipelines → MINTIFY → `VLLM_BASE_URL` valve |
-| Add a second vLLM instance | Add a second port-forward in the tunnel script and update `pipelines()` |
+| Flag | Value | Effect |
+|---|---|---|
+| `--host 0.0.0.0` | — | Listen on all interfaces (required for SSH tunnel access) |
+| `--port` | 8002 / 8004 | Port the HTTP server binds to on RunPod |
+| `--gpu-memory-utilization` | 0.40 / 0.45 | Fraction of total GPU VRAM pre-allocated. Remainder used for KV cache. Must sum ≤ 0.90 across all instances |
+| `--enforce-eager` | — | Disables CUDA graph capture. Slower inference, much faster cold start. Recommended when running multiple instances |
+| `HUGGINGFACE_HUB_CACHE` | `/workspace/hf-cache` | Shared model cache across restarts. Models downloaded once, reused forever |
+
+---
+
+## Adding a third model
+
+1. **Download it on RunPod** (one-time):
+   ```bash
+   huggingface-cli download <org>/<model> --cache-dir /workspace/hf-cache
+   ```
+
+2. **Add an entry to `INSTANCES` in `runpod-tunnel.sh`**:
+   ```bash
+   INSTANCES=(
+       "Qwen/Qwen3-1.7B:8002:0.40:vllm-8002"
+       "Qwen/Qwen2.5-3B-Instruct:8004:0.45:vllm-8004"
+       "<org>/<model>:8006:0.XX:vllm-8006"   # ← new entry
+   )
+   ```
+   Choose a `gpu-memory-utilization` so that all three values still sum ≤ 0.90.
+
+3. **Add the port to `VLLM_BASE_URLS`** in the pipeline valve (Admin Panel or `valves.json`):
+   ```
+   http://host.docker.internal:8002,http://host.docker.internal:8004,http://host.docker.internal:8006
+   ```
+
+No other code changes are needed.
+
+---
+
+## Verification
+
+```bash
+# 1. Confirm both vLLM instances are reachable through the tunnel
+curl http://localhost:8002/v1/models
+curl http://localhost:8004/v1/models
+
+# 2. Restart the pipeline container (picks up any code or valve changes)
+docker compose restart pipelines
+
+# 3. Watch pipeline logs — you should see both URLs queried
+docker logs -f mintify-pipelines
+
+# 4. Confirm routing — after sending a message with each model,
+#    the logs show which URL was used:
+docker logs mintify-pipelines 2>&1 | grep "url="
+```
