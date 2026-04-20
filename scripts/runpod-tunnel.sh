@@ -13,9 +13,9 @@ RUNPOD_HOST="63.141.33.23"
 RUNPOD_PORT="22171"
 RUNPOD_USER="root"
 SSH_KEY="$HOME/.ssh/.ssh_gpu/id_ed25519"
-VLLM_PORT="8000"
+VLLM_PORT="8002"
 
-SSH_OPTS="-p ${RUNPOD_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
+SSH_OPTS="-p ${RUNPOD_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=60"
 SSH="ssh ${SSH_OPTS} ${RUNPOD_USER}@${RUNPOD_HOST}"
 
 # ── Step 1: start vLLM if not already responding ─────────────────────────────
@@ -28,7 +28,8 @@ else
         tmux new-session -d -s vllm \
             'cd /workspace/vllm-lab && source venv/bin/activate && \
              HUGGINGFACE_HUB_CACHE=/workspace/hf-cache \
-             vllm serve Qwen/Qwen2.5-0.5B-Instruct --host 0.0.0.0 --port ${VLLM_PORT}'"
+             vllm serve Qwen/Qwen2.5-3B-Instruct --host 0.0.0.0 --port ${VLLM_PORT} \
+             --enforce-eager'" #Slows inferece time but speeds cold start!
 
     # ── Step 2: wait until vLLM responds (poll every 5 s, up to 10 min) ──────
     echo "Waiting for vLLM to be ready (this may take a few minutes)..."

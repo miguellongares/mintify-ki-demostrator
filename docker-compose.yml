@@ -22,7 +22,7 @@ services:
         condition: service_started
     environment:
       - PIPELINES_API_KEY=mintify-pipeline-key
-      - VLLM_BASE_URL=http://host.docker.internal:8000
+      - VLLM_BASE_URL=http://host.docker.internal:8002
       - QDRANT_URL=http://qdrant:6333
       - PIPELINES_DIR=/app/pipelines
     volumes:

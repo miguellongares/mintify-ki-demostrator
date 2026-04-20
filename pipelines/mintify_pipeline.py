@@ -19,7 +19,7 @@ from pydantic import BaseModel
 class Pipeline:
     class Valves(BaseModel):
         VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8000")
-        LLM_MODEL: str = "Qwen/Qwen2.5-0.5B-Instruct"
+        LLM_MODEL: str = "Qwen/Qwen2.5-3B-Instruct"
         EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
         QDRANT_URL: str = os.getenv("QDRANT_URL", "http://qdrant:6333")
         COLLECTION_NAME: str = "mintify_rag"
@@ -114,7 +114,7 @@ class Pipeline:
         print(f"[MINTIFY] Retrieved {len(hits_info)} chunks:")
         for i, h in enumerate(hits_info):
             print(f"  [{i+1}] source={h['source']} page={h['page']} score={h['score']}")
-            print(f"       text_preview: {repr(h['text'][:120])}")
+            print(f"       text_preview_all: {repr(h['text'])}")# [:120]
 
         print(f"[MINTIFY] Context length: {len(context)} chars")
 
