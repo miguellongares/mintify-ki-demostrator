@@ -1,10 +1,11 @@
 """
 MINTIFY RAG Pipeline
 --------------------
-Appears as a model in Open Web UI's chat dropdown automatically.
-Handles its own RAG: PDF indexing → Qdrant vector search → context injection → vLLM streaming.
+Manifold pipeline: all models currently loaded in vLLM appear as separate entries
+in Open Web UI's chat dropdown (e.g. "MINTIFY – Qwen/Qwen2.5-3B-Instruct").
 
 on_startup() — loads embedding model, connects to Qdrant & vLLM, indexes existing PDFs
+pipelines()   — method; queries vLLM /v1/models live so the list stays current
 pipe()        — called per message: retrieves context, streams enriched response
 """
 
@@ -19,7 +20,6 @@ from pydantic import BaseModel
 class Pipeline:
     class Valves(BaseModel):
         VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8000")
-        LLM_MODEL: str = "Qwen/Qwen2.5-3B-Instruct"
         EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
         QDRANT_URL: str = os.getenv("QDRANT_URL", "http://qdrant:6333")
         COLLECTION_NAME: str = "mintify_rag"
@@ -41,12 +41,25 @@ class Pipeline:
 
     def __init__(self):
         self.id = "mintify_pipeline"
-        self.name = "MINTIFY – Finanzielle Bildung"
+        self.name = "MINTIFY"
+        self.type = "manifold"
         self.valves = self.Valves(**self._load_valves())
         self.embedder = None
         self.qdrant = None
         self.llm_client = None
         self._indexed_hashes: set = set()
+
+    def pipelines(self) -> list:
+        """Returns one entry per model currently loaded in vLLM."""
+        try:
+            import httpx
+            resp = httpx.get(f"{self.valves.VLLM_BASE_URL}/v1/models", timeout=5)
+            resp.raise_for_status()
+            models = resp.json().get("data", [])
+            return [{"id": m["id"].replace("/", "__"), "name": f" – {m['id']}"} for m in models]
+        except Exception as e:
+            print(f"[MINTIFY] Could not fetch models from vLLM: {e}")
+            return [{"id": "unavailable", "name": "vLLM unavailable"}]
 
     def _load_valves(self) -> dict:
         import json
@@ -118,16 +131,19 @@ class Pipeline:
 
         print(f"[MINTIFY] Context length: {len(context)} chars")
 
+        # Strip manifold prefix and reverse slash sanitization: "mintify_pipeline.Qwen__..." → "Qwen/..."
+        actual_model = model_id.removeprefix(f"{self.id}.").replace("__", "/")
+
         # Build enriched message list
         enriched_system = self.valves.SYSTEM_PROMPT.format(context=context)
         enriched = [{"role": "system", "content": enriched_system}]
         enriched += [m for m in messages if m.get("role") != "system"]
 
-        print(f"[MINTIFY] Sending {len(enriched)} messages to vLLM (model: {self.valves.LLM_MODEL})")
+        print(f"[MINTIFY] Sending {len(enriched)} messages to vLLM (model: {actual_model})")
         print(f"[MINTIFY] System prompt length: {len(enriched_system)} chars")
         print(f"{'='*60}\n")
 
-        return self._stream_vllm(enriched, body)
+        return self._stream_vllm(enriched, body, actual_model)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
@@ -173,10 +189,10 @@ class Pipeline:
 
         return "\n\n---\n\n".join(parts), hits_info
 
-    def _stream_vllm(self, messages: list, body: dict) -> Generator:
+    def _stream_vllm(self, messages: list, body: dict, model: str) -> Generator:
         try:
             stream = self.llm_client.chat.completions.create(
-                model=self.valves.LLM_MODEL,
+                model=model,
                 messages=messages,
                 stream=True,
                 temperature=body.get("temperature", 0.7),
