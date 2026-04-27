@@ -1,0 +1,289 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 1420" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="ab" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <polygon points="0 0, 9 3.5, 0 7" fill="#1d4ed8"/>
+    </marker>
+    <marker id="ag" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <polygon points="0 0, 9 3.5, 0 7" fill="#15803d"/>
+    </marker>
+    <marker id="aam" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <polygon points="0 0, 9 3.5, 0 7" fill="#b45309"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1060" height="1420" fill="#f8fafc"/>
+
+  <!-- ═══ TITLE ═══ -->
+  <text x="530" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#0f172a">MINTIFY — RAG Backend Architecture</text>
+  <text x="530" y="54" text-anchor="middle" font-size="12" fill="#64748b">Request flow: Browser → Open Web UI → Pipeline Proxy → RAG Backend → Qdrant / vLLM</text>
+
+  <!-- ═══ BROWSER ═══ -->
+  <rect x="30" y="68" width="200" height="50" rx="8" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="130" y="90" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e293b">Browser</text>
+  <text x="130" y="108" text-anchor="middle" font-size="11" fill="#475569">User chat interface</text>
+
+  <!-- Arrow: Browser → OWUI -->
+  <line x1="130" y1="118" x2="130" y2="145" stroke="#1d4ed8" stroke-width="2" marker-end="url(#ab)"/>
+  <rect x="136" y="122" width="75" height="15" fill="#f8fafc" rx="2"/>
+  <text x="137" y="134" font-size="10" fill="#1d4ed8" font-weight="bold">chat message</text>
+
+  <!-- ═══ OPEN WEB UI ═══ -->
+  <rect x="30" y="147" width="450" height="76" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>
+  <rect x="30" y="147" width="450" height="27" rx="8" fill="#1d4ed8"/>
+  <rect x="30" y="161" width="450" height="13" fill="#1d4ed8"/>
+  <text x="255" y="164" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Open Web UI — mintify-webui · port 3000</text>
+  <text x="46" y="191" font-size="12" fill="#1e3a8a">Routes all chat via OPENAI_API_BASE_URL = http://pipelines:9099</text>
+  <text x="46" y="208" font-size="11" fill="#1e40af">OLLAMA disabled · auth: OPENAI_API_KEY = mintify-pipeline-key</text>
+
+  <!-- Arrow: OWUI → Pipeline -->
+  <line x1="240" y1="223" x2="240" y2="257" stroke="#1d4ed8" stroke-width="2.5" marker-end="url(#ab)"/>
+  <rect x="247" y="228" width="120" height="15" fill="#f8fafc" rx="2"/>
+  <text x="248" y="240" font-size="10" fill="#1d4ed8" font-weight="bold">OpenAI-compat request</text>
+
+  <!-- ═══ PIPELINE PROXY ═══ -->
+  <rect x="30" y="259" width="680" height="232" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <rect x="30" y="259" width="680" height="27" rx="8" fill="#7c3aed"/>
+  <rect x="30" y="273" width="680" height="13" fill="#7c3aed"/>
+  <text x="370" y="276" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Pipeline Proxy — mintify-pipelines · port 9099</text>
+  <text x="370" y="292" text-anchor="middle" font-size="11" fill="#e9d5ff">pipelines/mintify_pipeline.py · type = "manifold" · hot-reload on save</text>
+
+  <!-- __init__ -->
+  <rect x="46" y="301" width="648" height="32" rx="4" fill="white" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="62" y="315" font-size="12" font-weight="bold" fill="#5b21b6">__init__()</text>
+  <text x="150" y="315" font-size="11" fill="#374151">Loads Valves from valves.json · self.id = "mintify_pipeline" · self.type = "manifold"</text>
+  <text x="62" y="328" font-size="10" fill="#6b7280">Valve fields: BACKEND_URL · TOP_K · SYSTEM_PROMPT (with {context} placeholder)</text>
+
+  <!-- on_startup -->
+  <rect x="46" y="339" width="648" height="28" rx="4" fill="white" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="62" y="353" font-size="12" font-weight="bold" fill="#5b21b6">on_startup()  async</text>
+  <text x="185" y="353" font-size="11" fill="#374151">→ GET /api/health on RAG backend to confirm readiness (non-fatal if down)</text>
+  <text x="62" y="364" font-size="10" fill="#6b7280"/>
+
+  <!-- pipelines() -->
+  <rect x="46" y="373" width="648" height="28" rx="4" fill="white" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="62" y="387" font-size="12" font-weight="bold" fill="#5b21b6">pipelines()  periodic</text>
+  <text x="188" y="387" font-size="11" fill="#374151">→ GET /api/models · sanitizes IDs ("/" → "__") · populates OWUI model dropdown</text>
+
+  <!-- pipe() -->
+  <rect x="46" y="407" width="648" height="56" rx="4" fill="white" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="62" y="422" font-size="12" font-weight="bold" fill="#5b21b6">pipe(user_message, model_id, messages, body)  → Generator</text>
+  <text x="62" y="437" font-size="11" fill="#374151">1. Strip "mintify_pipeline." prefix · decode "__" → "/" in model_id</text>
+  <text x="62" y="451" font-size="11" fill="#374151">2. Build payload (user_message, model_id, messages, temperature, system_prompt, top_k)</text>
+  <text x="62" y="465" font-size="11" fill="#374151">3. httpx.stream("POST", BACKEND_URL/api/pipe)  · timeout=120 s · yield each text chunk to OWUI</text>
+
+  <!-- Arrow: Pipeline → RAG -->
+  <line x1="370" y1="491" x2="370" y2="524" stroke="#1d4ed8" stroke-width="2.5" marker-end="url(#ab)"/>
+  <rect x="297" y="497" width="148" height="15" fill="#f8fafc" rx="2"/>
+  <text x="298" y="509" font-size="10" fill="#1d4ed8" font-weight="bold">POST /api/pipe  (every message)</text>
+
+  <!-- ═══ RAG BACKEND ═══ -->
+  <rect x="30" y="526" width="680" height="820" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <rect x="30" y="526" width="680" height="27" rx="8" fill="#166534"/>
+  <rect x="30" y="540" width="680" height="13" fill="#166534"/>
+  <text x="370" y="543" text-anchor="middle" font-size="13" font-weight="bold" fill="white">RAG Backend — mintify-rag-service · port 8080</text>
+  <text x="370" y="559" text-anchor="middle" font-size="11" fill="#bbf7d0">rag-backend/app/ · FastAPI + lifespan() + uvicorn</text>
+
+  <!-- main.py -->
+  <rect x="46" y="568" width="648" height="62" rx="5" fill="white" stroke="#86efac" stroke-width="1.5"/>
+  <text x="62" y="585" font-size="12" font-weight="bold" fill="#166534">main.py — lifespan()  startup sequence</text>
+  <text x="62" y="601" font-size="11" fill="#374151">1. QdrantClient(url=settings.qdrant_url)    2. os.makedirs(upload_dir)</text>
+  <text x="62" y="616" font-size="11" fill="#374151">3. init_singletons(qdrant_client)    4. _ready = True  →  GET /api/health now returns 200</text>
+
+  <!-- dependencies.py -->
+  <rect x="46" y="640" width="648" height="80" rx="5" fill="white" stroke="#86efac" stroke-width="1.5"/>
+  <text x="62" y="657" font-size="12" font-weight="bold" fill="#166534">dependencies.py — init_singletons(qdrant_client)</text>
+  <text x="62" y="673" font-size="11" fill="#374151">1.  _embedder   = Embedder(settings.embedding_model)       loads SentenceTransformer all-MiniLM-L6-v2  (~100 MB)</text>
+  <text x="62" y="688" font-size="11" fill="#374151">2.  _retriever  = Retriever(qdrant_client, settings.collection_name)</text>
+  <text x="62" y="703" font-size="11" fill="#374151">3.  _indexer    = Indexer(_embedder, qdrant_client, settings)  +  indexer.startup()</text>
+  <text x="62" y="718" font-size="11" fill="#374151">4.  _llm_client = LLMClient(settings.vllm_urls)  +  refresh_model_map()  →  queries vLLM /v1/models</text>
+
+  <!-- Divider -->
+  <line x1="46" y1="730" x2="694" y2="730" stroke="#86efac" stroke-width="1.5"/>
+  <text x="62" y="747" font-size="12" font-weight="bold" fill="#166534">routers/rag.py — POST /api/pipe   (executed on every chat message)</text>
+
+  <!-- Step 1 -->
+  <rect x="46" y="754" width="648" height="52" rx="4" fill="white" stroke="#86efac" stroke-width="1"/>
+  <rect x="46" y="754" width="28" height="52" rx="4" fill="#16a34a"/>
+  <text x="60" y="785" text-anchor="middle" font-size="15" font-weight="bold" fill="white">1</text>
+  <text x="86" y="770" font-size="12" font-weight="bold" fill="#166534">indexer.index_new_files()</text>
+  <text x="86" y="785" font-size="11" fill="#374151">Hash-check each PDF · skip known · new files: fitz.open() → _chunk_text(800 chars, 100 overlap)</text>
+  <text x="86" y="800" font-size="11" fill="#374151">→ embedder.encode(chunk) → 384-dim vector → qdrant.upsert()   IDs: int(md5,16) % 2^53 + page×1000 + i</text>
+
+  <!-- Step 2 -->
+  <rect x="46" y="812" width="648" height="36" rx="4" fill="white" stroke="#86efac" stroke-width="1"/>
+  <rect x="46" y="812" width="28" height="36" rx="4" fill="#16a34a"/>
+  <text x="60" y="835" text-anchor="middle" font-size="15" font-weight="bold" fill="white">2</text>
+  <text x="86" y="827" font-size="12" font-weight="bold" fill="#166534">embedder.encode(user_message)  →  384-dim float vector</text>
+  <text x="86" y="842" font-size="11" fill="#374151">SentenceTransformer(all-MiniLM-L6-v2).encode(text).tolist()  — same model as indexing → matching vector space</text>
+
+  <!-- Step 3 -->
+  <rect x="46" y="854" width="648" height="52" rx="4" fill="white" stroke="#86efac" stroke-width="1"/>
+  <rect x="46" y="854" width="28" height="52" rx="4" fill="#16a34a"/>
+  <text x="60" y="885" text-anchor="middle" font-size="15" font-weight="bold" fill="white">3</text>
+  <text x="86" y="870" font-size="12" font-weight="bold" fill="#166534">retriever.retrieve(query_vec, top_k)  →  (context_string, hits_info)</text>
+  <text x="86" y="885" font-size="11" fill="#374151">qdrant.get_collection() → check count · qdrant.query_points(collection, query_vec, limit=top_k)</text>
+  <text x="86" y="900" font-size="11" fill="#374151">Format per hit: "[Quelle: file.pdf, Seite 3, Relevanz 0.84]\n&lt;chunk&gt;"  joined with  "\n\n---\n\n"</text>
+
+  <!-- Step 4 -->
+  <rect x="46" y="912" width="648" height="36" rx="4" fill="white" stroke="#86efac" stroke-width="1"/>
+  <rect x="46" y="912" width="28" height="36" rx="4" fill="#16a34a"/>
+  <text x="60" y="935" text-anchor="middle" font-size="15" font-weight="bold" fill="white">4</text>
+  <text x="86" y="927" font-size="12" font-weight="bold" fill="#166534">system_prompt.format(context=chunks)  →  enriched_messages</text>
+  <text x="86" y="942" font-size="11" fill="#374151">Fills {context} placeholder · prepends enriched system message · strips any existing system message from history</text>
+
+  <!-- Step 5 -->
+  <rect x="46" y="954" width="648" height="52" rx="4" fill="white" stroke="#86efac" stroke-width="1"/>
+  <rect x="46" y="954" width="28" height="52" rx="4" fill="#16a34a"/>
+  <text x="60" y="985" text-anchor="middle" font-size="15" font-weight="bold" fill="white">5</text>
+  <text x="86" y="970" font-size="12" font-weight="bold" fill="#166534">llm.stream(enriched_messages, model_id, temperature)</text>
+  <text x="86" y="985" font-size="11" fill="#374151">LLMClient._resolve_url(model) → OpenAI(base_url=vllm_url+"/v1").chat.completions.create(stream=True)</text>
+  <text x="86" y="1000" font-size="11" fill="#374151">yield delta tokens → StreamingResponse → httpx.iter_text() → Pipeline pipe() → OWUI → Browser</text>
+
+  <!-- Divider -->
+  <line x1="46" y1="1014" x2="694" y2="1014" stroke="#86efac" stroke-width="1.5"/>
+
+  <!-- GET /api/models -->
+  <text x="62" y="1031" font-size="12" font-weight="bold" fill="#166534">routers/models.py — GET /api/models   (periodic OWUI dropdown refresh)</text>
+  <rect x="46" y="1038" width="648" height="38" rx="4" fill="white" stroke="#86efac" stroke-width="1"/>
+  <text x="62" y="1053" font-size="11" fill="#374151">llm_client.refresh_model_map()  →  GET {vllm_url}/v1/models on each configured URL  →  rebuilds { model_id: url }</text>
+  <text x="62" y="1068" font-size="11" fill="#374151">Returns: [{"id": "Qwen/Qwen3-1.7B", "name": " – Qwen/Qwen3-1.7B"}]   (raw HF IDs — pipeline sanitizes "/" → "__")</text>
+
+  <!-- Divider -->
+  <line x1="46" y1="1084" x2="694" y2="1084" stroke="#86efac" stroke-width="1.5"/>
+  <text x="62" y="1101" font-size="12" font-weight="bold" fill="#166534">Service Singletons — injected via FastAPI Depends()</text>
+
+  <!-- Embedder -->
+  <rect x="46" y="1109" width="150" height="108" rx="4" fill="white" stroke="#86efac" stroke-width="1.5"/>
+  <rect x="46" y="1109" width="150" height="24" rx="4" fill="#16a34a"/>
+  <rect x="46" y="1121" width="150" height="12" fill="#16a34a"/>
+  <text x="121" y="1126" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Embedder</text>
+  <text x="62" y="1148" font-size="11" fill="#374151">encode(text: str)</text>
+  <text x="62" y="1163" font-size="11" fill="#374151">→ list[float]</text>
+  <text x="62" y="1181" font-size="10" fill="#6b7280">SentenceTransformer</text>
+  <text x="62" y="1195" font-size="10" fill="#6b7280">all-MiniLM-L6-v2</text>
+  <text x="62" y="1209" font-size="10" fill="#6b7280">384-dim vectors</text>
+
+  <!-- Retriever -->
+  <rect x="208" y="1109" width="150" height="108" rx="4" fill="white" stroke="#86efac" stroke-width="1.5"/>
+  <rect x="208" y="1109" width="150" height="24" rx="4" fill="#16a34a"/>
+  <rect x="208" y="1121" width="150" height="12" fill="#16a34a"/>
+  <text x="283" y="1126" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Retriever</text>
+  <text x="224" y="1148" font-size="11" fill="#374151">retrieve(vec, top_k)</text>
+  <text x="224" y="1163" font-size="11" fill="#374151">→ (str, list)</text>
+  <text x="224" y="1181" font-size="10" fill="#6b7280">qdrant.query_points()</text>
+  <text x="224" y="1195" font-size="10" fill="#6b7280">cosine similarity</text>
+  <text x="224" y="1209" font-size="10" fill="#6b7280">with_payload=True</text>
+
+  <!-- LLMClient -->
+  <rect x="370" y="1109" width="162" height="108" rx="4" fill="white" stroke="#86efac" stroke-width="1.5"/>
+  <rect x="370" y="1109" width="162" height="24" rx="4" fill="#16a34a"/>
+  <rect x="370" y="1121" width="162" height="12" fill="#16a34a"/>
+  <text x="451" y="1126" text-anchor="middle" font-size="12" font-weight="bold" fill="white">LLMClient</text>
+  <text x="386" y="1148" font-size="11" fill="#374151">stream(msgs, model)</text>
+  <text x="386" y="1163" font-size="11" fill="#374151">refresh_model_map()</text>
+  <text x="386" y="1181" font-size="10" fill="#6b7280">openai.chat</text>
+  <text x="386" y="1195" font-size="10" fill="#6b7280">.completions.create</text>
+  <text x="386" y="1209" font-size="10" fill="#6b7280">(stream=True)</text>
+
+  <!-- Indexer -->
+  <rect x="544" y="1109" width="150" height="108" rx="4" fill="white" stroke="#86efac" stroke-width="1.5"/>
+  <rect x="544" y="1109" width="150" height="24" rx="4" fill="#16a34a"/>
+  <rect x="544" y="1121" width="150" height="12" fill="#16a34a"/>
+  <text x="619" y="1126" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Indexer</text>
+  <text x="560" y="1148" font-size="11" fill="#374151">startup()</text>
+  <text x="560" y="1163" font-size="11" fill="#374151">index_new_files()</text>
+  <text x="560" y="1181" font-size="10" fill="#6b7280">PyMuPDF (fitz)</text>
+  <text x="560" y="1195" font-size="10" fill="#6b7280">chunk + embed</text>
+  <text x="560" y="1209" font-size="10" fill="#6b7280">qdrant.upsert()</text>
+
+  <!-- config.py -->
+  <rect x="46" y="1228" width="648" height="34" rx="4" fill="white" stroke="#86efac" stroke-width="1.5"/>
+  <text x="62" y="1244" font-size="12" font-weight="bold" fill="#166534">config.py — Settings  (pydantic-settings, from env vars)</text>
+  <text x="62" y="1258" font-size="11" fill="#374151">vllm_base_urls · qdrant_url · collection_name · embedding_model · upload_dir · chunk_size(800) · chunk_overlap(100) · top_k(5)</text>
+
+  <!-- Startup note -->
+  <rect x="46" y="1272" width="648" height="42" rx="4" fill="#fefce8" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="62" y="1289" font-size="11" font-weight="bold" fill="#92400e">Startup sequence:</text>
+  <text x="160" y="1289" font-size="11" fill="#374151">lifespan() → Embedder.load() → Retriever/Indexer/LLMClient init → indexer.startup()</text>
+  <text x="62" y="1306" font-size="11" fill="#374151">→ _ensure_collection() → _prefetch_hashes() → _index_all_files() → _ready=True → /api/health 200 → pipelines starts</text>
+
+  <!-- ═══ QDRANT (right side) ═══ -->
+  <!-- Positioned to align with steps 1 and 3 -->
+  <rect x="758" y="820" width="272" height="118" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="2"/>
+  <rect x="758" y="820" width="272" height="27" rx="8" fill="#15803d"/>
+  <rect x="758" y="834" width="272" height="13" fill="#15803d"/>
+  <text x="894" y="837" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Qdrant</text>
+  <text x="894" y="853" text-anchor="middle" font-size="11" fill="#dcfce7">mintify-qdrant · port 6333</text>
+  <text x="774" y="875" font-size="11" fill="#166534">Collection: mintify_rag</text>
+  <text x="774" y="890" font-size="11" fill="#166534">384-dim vectors · COSINE distance</text>
+  <text x="774" y="905" font-size="11" fill="#166534">Payload: text, source, page, file_hash</text>
+  <text x="774" y="920" font-size="11" fill="#166534">Storage: ./data/qdrant/ (bind-mounted)</text>
+
+  <!-- ═══ vLLM (right side) ═══ -->
+  <!-- Positioned to align with step 5 and models -->
+  <rect x="758" y="970" width="272" height="118" rx="8" fill="#fef3c7" stroke="#b45309" stroke-width="2"/>
+  <rect x="758" y="970" width="272" height="27" rx="8" fill="#b45309"/>
+  <rect x="758" y="984" width="272" height="13" fill="#b45309"/>
+  <text x="894" y="987" text-anchor="middle" font-size="13" font-weight="bold" fill="white">vLLM (RunPod)</text>
+  <text x="894" y="1003" text-anchor="middle" font-size="11" fill="#fde68a">SSH tunnel → host:8002 / 8004</text>
+  <text x="774" y="1025" font-size="11" fill="#7c2d12">OpenAI-compat API</text>
+  <text x="774" y="1040" font-size="11" fill="#7c2d12">GET  /v1/models</text>
+  <text x="774" y="1055" font-size="11" fill="#7c2d12">POST /v1/chat/completions  (stream)</text>
+  <text x="774" y="1070" font-size="11" fill="#7c2d12">Models: Qwen/Qwen3-x.xB</text>
+
+  <!-- ═══ ARROWS: RAG steps → External services ═══ -->
+
+  <!-- Step 1 (y=754..806, center=780) → Qdrant (top y=820)
+       L-shaped: right from (710,780) → (740,780) → down to (740,879) → right to (756,879) -->
+  <path d="M710,780 L740,780 L740,879 L756,879" stroke="#15803d" stroke-width="2" fill="none" marker-end="url(#ag)"/>
+  <rect x="713" y="766" width="52" height="15" fill="#f8fafc" rx="2"/>
+  <text x="714" y="778" font-size="10" font-weight="bold" fill="#15803d">upsert()</text>
+
+  <!-- Step 3 (y=854..906, center=880) → Qdrant (center y=879)
+       Nearly horizontal: straight line right -->
+  <line x1="710" y1="880" x2="756" y2="879" stroke="#15803d" stroke-width="2" marker-end="url(#ag)"/>
+  <rect x="713" y="864" width="75" height="15" fill="#f8fafc" rx="2"/>
+  <text x="714" y="876" font-size="10" font-weight="bold" fill="#15803d">query_points()</text>
+
+  <!-- Step 5 (y=954..1006, center=980) → vLLM (center y=1029)
+       L-shaped: right from (710,980) → (740,980) → down to (740,1029) → right to (756,1029) -->
+  <path d="M710,980 L740,980 L740,1029 L756,1029" stroke="#b45309" stroke-width="2" fill="none" marker-end="url(#aam)"/>
+  <rect x="713" y="964" width="44" height="15" fill="#f8fafc" rx="2"/>
+  <text x="714" y="976" font-size="10" font-weight="bold" fill="#b45309">stream()</text>
+
+  <!-- models router (y=1038..1076, center=1057) → vLLM (center y=1029)
+       Dashed, slightly upward: right from (710,1057) → (740,1057) → up to (740,1049) → right to (756,1049) -->
+  <path d="M710,1057 L740,1057 L740,1049 L756,1049" stroke="#b45309" stroke-width="1.8" stroke-dasharray="5,3" fill="none" marker-end="url(#aam)"/>
+  <rect x="713" y="1041" width="75" height="15" fill="#f8fafc" rx="2"/>
+  <text x="714" y="1053" font-size="10" font-weight="bold" fill="#b45309">GET /v1/models</text>
+
+  <!-- ═══ LEGEND ═══ -->
+  <rect x="758" y="1130" width="272" height="182" rx="8" fill="white" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="758" y="1130" width="272" height="26" rx="8" fill="#334155"/>
+  <rect x="758" y="1143" width="272" height="13" fill="#334155"/>
+  <text x="894" y="1148" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Legend</text>
+
+  <line x1="774" y1="1172" x2="818" y2="1172" stroke="#1d4ed8" stroke-width="2.5" marker-end="url(#ab)"/>
+  <text x="826" y="1176" font-size="12" fill="#1e293b">HTTP request (solid)</text>
+
+  <line x1="774" y1="1196" x2="818" y2="1196" stroke="#15803d" stroke-width="2" marker-end="url(#ag)"/>
+  <text x="826" y="1200" font-size="12" fill="#1e293b">Qdrant read / write</text>
+
+  <line x1="774" y1="1220" x2="818" y2="1220" stroke="#b45309" stroke-width="2" marker-end="url(#aam)"/>
+  <text x="826" y="1224" font-size="12" fill="#1e293b">vLLM call (streaming)</text>
+
+  <line x1="774" y1="1244" x2="818" y2="1244" stroke="#b45309" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#aam)"/>
+  <text x="826" y="1248" font-size="12" fill="#1e293b">vLLM models poll</text>
+
+  <text x="774" y="1272" font-size="10" fill="#6b7280">Numbered steps = per-message execution order</text>
+  <text x="774" y="1287" font-size="10" fill="#6b7280">L-shaped arrows follow box edges to avoid overlap</text>
+  <text x="774" y="1302" font-size="10" fill="#6b7280">Streaming response flows back along the same path</text>
+
+  <!-- ═══ RETURN PATH NOTE ═══ -->
+  <rect x="758" y="1328" width="272" height="60" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="774" y="1346" font-size="11" font-weight="bold" fill="#1e40af">◄ Streaming response path:</text>
+  <text x="774" y="1362" font-size="11" fill="#1e293b">vLLM → LLMClient → StreamingResponse</text>
+  <text x="774" y="1377" font-size="11" fill="#1e293b">→ httpx.iter_text() → pipe() → OWUI → Browser</text>
+
+</svg>
