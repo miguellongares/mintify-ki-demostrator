@@ -12,22 +12,48 @@ services:
       - "6334:6334"   # gRPC
     restart: unless-stopped
 
+  mintify-rag-service:
+    build:
+      context: ./rag-backend
+      dockerfile: Dockerfile
+    container_name: mintify-rag-service
+    depends_on:
+      qdrant:
+        condition: service_started
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - VLLM_BASE_URLS=http://host.docker.internal:8002,http://host.docker.internal:8004
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - ./data/uploads:/app/uploads
+    ports:
+      - "8080:8080"   # optional: exposed for local debugging
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s   # allow time for embedding model load + PDF indexing
+    restart: unless-stopped
+
   pipelines:
     build:
       context: ./pipelines
       dockerfile: Dockerfile
     container_name: mintify-pipelines
     depends_on:
-      qdrant:
-        condition: service_started
+      mintify-rag-service:
+        condition: service_healthy
     environment:
       - PIPELINES_API_KEY=mintify-pipeline-key
-      - VLLM_BASE_URL=http://host.docker.internal:8002
-      - QDRANT_URL=http://qdrant:6333
+      - RAG_BACKEND_URL=http://mintify-rag-service:8080
       - PIPELINES_DIR=/app/pipelines
+      # FIX: Python buffers stdout when not attached to a TTY (i.e. inside Docker).
+      # Without this, print() calls never flush to `docker logs` — the primary reason
+      # no pipeline logs were visible even when pipe() was being called.
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./pipelines:/app/pipelines
-      - ./data/uploads:/app/uploads
     ports:
       - "9099:9099"
     restart: unless-stopped
