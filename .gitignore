@@ -8,6 +8,10 @@
 # Python
 *.pyc
 __pycache__/
+.venv/
+
+# Runtime data (Docker volumes, model caches)
+data/
 
 # macOS
 .DS_Store
