@@ -10,13 +10,6 @@ Full indexing pipeline per file:
   4. Embed each chunk with Embedder.encode() → 384-dim float vector
   5. Upsert all PointStructs into Qdrant in a single batch call
 
-Deduplication strategy:
-  - _indexed_hashes is an in-memory set of MD5 hex strings.
-  - On startup, _prefetch_indexed_hashes() pre-populates it from Qdrant's stored payloads
-    so that container restarts don't trigger redundant re-embedding of known files.
-  - index_new_files() (called on every pipe() request) adds newly uploaded files
-    without requiring a container restart.
-
 Deterministic Qdrant point IDs:
   Each chunk's ID is computed as:
     id = int(md5_hex, 16) % (2**53) + page_num * 1000 + chunk_index
@@ -33,6 +26,7 @@ Qdrant collection schema:
 import glob
 import hashlib
 import os
+import fitz  # pymupdf
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
@@ -99,7 +93,7 @@ class Indexer:
             print(f"[RAG] Could not pre-fetch hashes: {e}")
 
     def _index_all_files(self):
-        """Index every PDF found in the upload directory (skipping already-indexed ones)."""
+        """Call _index_file() for every PDF in the upload directory."""
         pattern = os.path.join(self._settings.upload_dir, "**", "*.pdf")
         files = glob.glob(pattern, recursive=True)
         print(f"[RAG] Found {len(files)} PDF(s) in {self._settings.upload_dir}")
@@ -109,14 +103,11 @@ class Indexer:
     def _index_file(self, path: str):
         """
         Full indexing pipeline for a single PDF file.
-        fitz (PyMuPDF) is imported lazily here to avoid a top-level import error
-        if the package isn't installed (though it always is in the Docker image).
         """
-        import fitz  # pymupdf
 
         h = self._file_hash(path)
         if h in self._indexed_hashes:
-            # Already indexed (checked again in case of race between startup scan and new upload).
+            # Already indexed 
             return
 
         filename = os.path.basename(path)
@@ -169,9 +160,7 @@ class Indexer:
     def _chunk_text(self, text: str) -> list[str]:
         """
         Split text into overlapping fixed-size chunks.
-        Overlap prevents context loss at chunk boundaries — a sentence that spans
-        two chunks appears (partially) in both, so at least one chunk will be retrieved
-        if the user asks about that sentence.
+        Overlap prevents context loss at chunk boundaries 
         """
         size = self._settings.chunk_size
         overlap = self._settings.chunk_overlap
@@ -181,8 +170,6 @@ class Indexer:
             chunks.append(text[start:end])
             if end == len(text):
                 break
-            # Advance by (size - overlap) so the next chunk starts overlap chars before
-            # the end of the current chunk.
             start += size - overlap
         return chunks
 

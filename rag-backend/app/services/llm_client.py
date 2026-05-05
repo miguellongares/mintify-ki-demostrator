@@ -1,10 +1,5 @@
 """
 LLMClient — vLLM model routing and streaming
----------------------------------------------
-Manages connections to one or more vLLM instances running on RunPod.
-Each vLLM instance exposes an OpenAI-compatible API on port 8000 (on RunPod),
-which is SSH-tunnelled to localhost:8002 (and :8004 for a second pod) on the host,
-and reached from Docker containers via host.docker.internal:8002.
 
 Model→URL routing:
   vLLM can serve multiple models, and there can be multiple vLLM instances.
@@ -19,10 +14,7 @@ Refresh strategy:
     dynamically without restarting the RAG service.
 
 Streaming:
-  Uses the official openai Python client with stream=True. This gives us a standard
-  SSE (Server-Sent Events) stream which we iterate chunk by chunk. Each chunk's
-  delta.content is yielded as a plain text string back to the router, which wraps
-  it in a FastAPI StreamingResponse. The pipeline proxy (mintify_pipeline.py) reads
+  Uses the official openai Python client with stream=True. The pipeline proxy (mintify_pipeline.py) reads
   this stream via httpx and yields each chunk to Open Web UI.
 """
 
@@ -52,8 +44,8 @@ class LLMClient:
                 resp = httpx.get(f"{url}/v1/models", timeout=5)
                 resp.raise_for_status()
                 for m in resp.json().get("data", []):
-                    # Map each model ID to the URL where it's hosted.
-                    # If two vLLM instances serve the same model ID, the last one wins.
+                    # Inner loop handles APIs that return multiple models per URL (e.g. LiteLLM).
+                    # vLLM typically returns just one, but the /v1/models spec allows many.
                     result[m["id"]] = url
             except Exception as e:
                 # Non-fatal: this URL may be a second pod that isn't always running.
@@ -83,14 +75,6 @@ class LLMClient:
     def stream(self, messages: list[dict], model: str, temperature: float) -> Generator[str, None, None]:
         """
         Send an OpenAI-compatible chat completion request to vLLM and stream back tokens.
-
-        The openai client is created fresh per call (not cached) because the base_url
-        can vary per model. This is a lightweight object — no persistent connection.
-        api_key="vllm" is required by the openai client interface but vLLM doesn't
-        actually validate it; any non-empty string works.
-
-        Yields raw text strings (token deltas), one per SSE chunk from vLLM.
-        Empty deltas (None) are skipped — they appear in the final chunk.
         """
         url = self._resolve_url(model)
         # Point the OpenAI client at the specific vLLM instance serving this model.
@@ -101,7 +85,7 @@ class LLMClient:
                 messages=messages,
                 stream=True,          # request SSE streaming
                 temperature=temperature,
-            )
+            ) # type: ignore
             for chunk in stream:
                 delta = chunk.choices[0].delta.content
                 if delta:

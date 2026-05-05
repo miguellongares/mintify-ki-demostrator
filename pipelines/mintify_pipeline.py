@@ -27,7 +27,7 @@ class Pipeline:
     def __init__(self):
         self.id = "mintify_pipeline"
         self.name = "MINTIFY"
-        self.type = "manifold"
+        self.type = "manifold" #By defining manifold as type OWUI automatically calls pipelines
         self.valves = self.Valves(**self._load_valves())
 
     def pipelines(self) -> list:

@@ -9,10 +9,6 @@ The SAME model must be used for both operations. Embedding with a different mode
 would produce vectors in a different space, making cosine similarity meaningless.
 
 Model: all-MiniLM-L6-v2
-  - Produces 384-dimensional float vectors (hence `VectorParams(size=384)` in Indexer)
-  - Fast CPU inference (~5ms per sentence), good for semantic search tasks
-  - Downloaded automatically from HuggingFace on first startup (~90 MB, cached at
-    ~/.cache/huggingface/ inside the container; lost on rebuild unless a volume is added)
 """
 
 from sentence_transformers import SentenceTransformer
@@ -20,8 +16,6 @@ from sentence_transformers import SentenceTransformer
 
 class Embedder:
     def __init__(self, model_name: str):
-        # SentenceTransformer downloads the model from HuggingFace Hub on first use.
-        # On subsequent container starts, it loads from the local cache (~1-3s).
         print(f"[RAG] Loading embedding model: {model_name}")
         self._model = SentenceTransformer(model_name)
         print("[RAG] Embedding model ready.")

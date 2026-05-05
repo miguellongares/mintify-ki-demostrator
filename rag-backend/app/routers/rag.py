@@ -1,9 +1,5 @@
 """
 POST /api/pipe — main RAG inference endpoint
----------------------------------------------
-This is the core of the MINTIFY system. It receives a chat request from the
-pipeline proxy (mintify_pipeline.py), runs the full Retrieval-Augmented Generation
-pipeline, and streams the LLM's response back as plain text.
 
 Full RAG pipeline executed on every request:
   1. index_new_files()    — check if any new PDFs were uploaded since last call
@@ -63,16 +59,11 @@ async def pipe(
     print(f"[RAG] user_message: {repr(req.user_message[:200])}")
     print(f"[RAG] model_id: {req.model_id}")
 
-    # Step 1: Check for newly uploaded PDFs and index them on-the-fly.
-    # Hashing is used to skip files already indexed — no duplicate vectors.
     indexer.index_new_files()
 
-    # Step 2: Embed the user's query into a 384-dim vector using the same
-    # all-MiniLM-L6-v2 model used at indexing time. The vector spaces must match.
     print("[RAG] Embedding query...")
     query_vec = embedder.encode(req.user_message)
 
-    # Step 3: Search Qdrant for the top-K chunks most similar to the query vector.
     # Returns a formatted context string and a list of metadata dicts for logging.
     context, hits_info = retriever.retrieve(query_vec, req.top_k)
 
@@ -83,22 +74,15 @@ async def pipe(
 
     print(f"[RAG] Context length: {len(context)} chars")
 
-    # Step 4: Build the enriched message list for vLLM.
-    # Replace {context} in the system prompt with the retrieved PDF text,
-    # then prepend it to the conversation history (stripping any prior system message
-    # the client may have included, since we always use our own).
+    # Add the retrieved context to the system prompt
     enriched_system = req.system_prompt.format(context=context)
     enriched = [{"role": "system", "content": enriched_system}]
+    # Append to the enriched sys_prompt all the previous chat
     enriched += [m for m in req.messages if m.get("role") != "system"]
 
     print(f"[RAG] Sending {len(enriched)} messages to vLLM (model: {req.model_id})")
     print(f"{'='*60}\n")
 
-    # Step 5: Stream vLLM's response back.
-    # token_generator is a synchronous generator — StreamingResponse runs it in a
-    # thread pool so it doesn't block the async event loop.
-    # media_type "text/plain" matches what mintify_pipeline.pipe() expects:
-    # it iterates r.iter_text() and yields each chunk directly to OWUI.
     def token_generator():
         yield from llm.stream(enriched, req.model_id, req.temperature)
 

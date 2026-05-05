@@ -9,7 +9,7 @@ _retriever: Retriever | None = None
 _indexer: Indexer | None = None
 _llm_client: LLMClient | None = None
 
-
+# 
 def init_singletons(qdrant_client):
     global _embedder, _retriever, _indexer, _llm_client
 
@@ -19,7 +19,7 @@ def init_singletons(qdrant_client):
 
     _llm_client = LLMClient(settings.vllm_urls)
     _llm_client.refresh_model_map()
-
+    # Must run after _embedder is set — startup() triggers PDF indexing which needs it.
     _indexer.startup()
 
 
