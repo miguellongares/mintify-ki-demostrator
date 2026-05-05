@@ -25,7 +25,7 @@ services:
       - VLLM_BASE_URLS=http://host.docker.internal:8002,http://host.docker.internal:8004
       - UPLOAD_DIR=/app/uploads
     volumes:
-      - ./data/uploads:/app/uploads
+      - ./data/open-webui/uploads:/app/uploads  #look at the uploaded docs form the web ui knowledge
     ports:
       - "8080:8080"   # optional: exposed for local debugging
     healthcheck:
