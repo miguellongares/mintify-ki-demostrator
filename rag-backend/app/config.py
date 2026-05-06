@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     chunk_size: int = 800
     chunk_overlap: int = 100
     top_k: int = 5
+    judge_vllm_url: str = "http://host.docker.internal:8004"
 
     @property
     def vllm_urls(self) -> list[str]:
