@@ -2,11 +2,13 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from qdrant_client import QdrantClient
 
 from app.config import settings
 from app.dependencies import init_singletons
 from app.routers import models, rag
+from app.routers import judge
 
 _ready = False
 
@@ -30,8 +32,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="MINTIFY RAG Service", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 app.include_router(models.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
+app.include_router(judge.router, prefix="/api")
 
 
 @app.get("/api/health")
