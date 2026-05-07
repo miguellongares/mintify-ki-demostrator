@@ -74,7 +74,8 @@ echo "Press Ctrl+C to close."
 
 ssh \
     -N \
-    -L "8002:localhost:8002" \
-    -L "8004:localhost:8004" \
+    -o GatewayPorts=yes \
+    -L "0.0.0.0:8002:localhost:8002" \
+    -L "0.0.0.0:8004:localhost:8004" \
     ${SSH_OPTS} \
     "${RUNPOD_USER}@${RUNPOD_HOST}"
