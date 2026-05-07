@@ -27,7 +27,7 @@
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import MenuLines from '../icons/MenuLines.svelte';
 	import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
-	import ChartBar from '../icons/ChartBar.svelte';
+	import Scale from '../icons/Scale.svelte';
 
 	import PencilSquare from '../icons/PencilSquare.svelte';
 	import Banner from '../common/Banner.svelte';
@@ -146,7 +146,7 @@
 							aria-label="Judgement Mode"
 						>
 							<div class="m-auto self-center {$showJudgement ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}">
-								<ChartBar className="size-5" />
+								<Scale className="size-5" />
 							</div>
 						</button>
 					</Tooltip>
