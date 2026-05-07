@@ -25,6 +25,27 @@ Browser → Open Web UI (Frontend, port 3000)
 
 ---
 
+## Connecting to RunPod (LLM inference)
+
+MINTIFY does not run an LLM locally. Instead, inference is delegated to a GPU instance on RunPod running **vLLM**. The Docker containers reach the model through an SSH tunnel that maps `localhost:8002` on your machine to the vLLM server on the remote instance.
+
+**The tunnel must be open before starting the stack.** Without it, the RAG pipeline has no route to the model and every chat request will fail.
+
+To start the tunnel, run the following in a dedicated terminal and keep it open for as long as the stack is running:
+
+```bash
+./scripts/runpod-tunnel.sh
+```
+
+The script will:
+1. Check whether vLLM is already responding on RunPod.
+2. If not, launch it inside a `tmux` session on the remote host and wait until it is ready (this can take a few minutes on first load).
+3. Open the SSH port-forward (`localhost:8002 → RunPod:8002`) and hold it open until you press **Ctrl+C**.
+
+Once you see *"Opening SSH tunnel"* in the output, the stack is ready to receive requests.
+
+---
+
 ## Prerequisites
 
 - [Docker Desktop](https://docs.docker.com/get-docker/) 4.40+ with Docker Compose v2

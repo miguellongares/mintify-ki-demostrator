@@ -26,6 +26,8 @@ services:
       - UPLOAD_DIR=/app/uploads
     volumes:
       - ./data/open-webui/uploads:/app/uploads  #look at the uploaded docs form the web ui knowledge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"   # optional: exposed for local debugging
     healthcheck:
@@ -54,6 +56,8 @@ services:
       - PYTHONUNBUFFERED=1
     volumes:
       - ./pipelines:/app/pipelines
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "9099:9099"
     restart: unless-stopped
