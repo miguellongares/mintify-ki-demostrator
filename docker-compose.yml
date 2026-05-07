@@ -29,7 +29,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"   # optional: exposed for local debugging
+      - "8088:8080"   # optional: exposed for local debugging --> EXTRA it was 8080:8080 but changed for server
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
       interval: 30s
