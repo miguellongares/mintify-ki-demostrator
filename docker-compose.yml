@@ -22,7 +22,7 @@ services:
         condition: service_started
     environment:
       - QDRANT_URL=http://qdrant:6333
-      - - VLLM_BASE_URLS=${VLLM_BASE_URLS:-http://host.docker.internal:8002,http://host.docker.internal:8004} #OLD: VLLM_BASE_URLS=http://host.docker.internal:8002,http://host.docker.internal:8004
+      - VLLM_BASE_URLS=${VLLM_BASE_URLS:-http://host.docker.internal:8002,http://host.docker.internal:8004} #OLD: VLLM_BASE_URLS=http://host.docker.internal:8002,http://host.docker.internal:8004
       - UPLOAD_DIR=/app/uploads
     volumes:
       - ./data/open-webui/uploads:/app/uploads  #look at the uploaded docs form the web ui knowledge
