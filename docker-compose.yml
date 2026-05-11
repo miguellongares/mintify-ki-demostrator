@@ -26,6 +26,7 @@ services:
       - UPLOAD_DIR=/app/uploads
     volumes:
       - ./data/open-webui/uploads:/app/uploads  #look at the uploaded docs form the web ui knowledge
+      - ./rag-backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

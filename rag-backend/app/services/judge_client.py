@@ -61,7 +61,7 @@ class JudgeClient:
                     }
                 ],
                 temperature=0.3,
-                max_tokens=256,
+                max_tokens=512,
             )
             raw = completion.choices[0].message.content or ""
             raw = raw.strip()

@@ -10,7 +10,7 @@
 		judgeLoading = true;
 		judgeResults = null;
 		try {
-			const resp = await fetch('http://localhost:8080/api/judge', {
+			const resp = await fetch('http://localhost:8088/api/judge', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ query, answer })
