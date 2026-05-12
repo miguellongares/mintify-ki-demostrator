@@ -7,8 +7,7 @@ from qdrant_client import QdrantClient
 
 from app.config import settings
 from app.dependencies import init_singletons
-from app.routers import models, rag
-from app.routers import judge
+from app.routers import judge, models, rag, tts
 
 _ready = False
 
@@ -42,6 +41,7 @@ app.add_middleware(
 app.include_router(models.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
 app.include_router(judge.router, prefix="/api")
+app.include_router(tts.router, prefix="/api")
 
 
 @app.get("/api/health")

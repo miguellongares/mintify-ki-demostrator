@@ -4,16 +4,18 @@ from app.services.indexer import Indexer
 from app.services.judge_client import JudgeClient
 from app.services.llm_client import LLMClient
 from app.services.retriever import Retriever
+from app.services.tts_client import Qwen3TTSClient, TTSClient
 
 _embedder: Embedder | None = None
 _retriever: Retriever | None = None
 _indexer: Indexer | None = None
 _llm_client: LLMClient | None = None
 _judge_client: JudgeClient | None = None
+_tts_client: TTSClient | None = None
 
 #
 def init_singletons(qdrant_client):
-    global _embedder, _retriever, _indexer, _llm_client, _judge_client
+    global _embedder, _retriever, _indexer, _llm_client, _judge_client, _tts_client
 
     _embedder = Embedder(settings.embedding_model)
     _retriever = Retriever(qdrant_client, settings.collection_name)
@@ -25,6 +27,12 @@ def init_singletons(qdrant_client):
     _indexer.startup()
 
     _judge_client = JudgeClient(settings.judge_vllm_url)
+
+    if settings.tts_url:
+        _tts_client = Qwen3TTSClient(settings.tts_url, settings.tts_voice_instructions)
+        print(f"[RAG] TTS client initialised → {settings.tts_url}")
+    else:
+        print("[RAG] TTS disabled (TTS_URL not set)")
 
 
 def get_settings() -> Settings:
@@ -49,3 +57,7 @@ def get_llm_client() -> LLMClient:
 
 def get_judge_client() -> JudgeClient:
     return _judge_client
+
+
+def get_tts_client() -> TTSClient | None:
+    return _tts_client
