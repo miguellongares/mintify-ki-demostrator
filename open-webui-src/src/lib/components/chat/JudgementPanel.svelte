@@ -10,7 +10,8 @@
 		judgeLoading = true;
 		judgeResults = null;
 		try {
-			const resp = await fetch('http://localhost:8088/api/judge', {
+			const judgeUrl = `${window.location.protocol}//${window.location.hostname}:8088/api/judge`;
+			const resp = await fetch(judgeUrl, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ query, answer })
