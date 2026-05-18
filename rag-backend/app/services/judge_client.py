@@ -40,7 +40,7 @@ class JudgeClient:
             if models:
                 self._model = models[0]["id"]
                 print(f"[Judge] Using model: {self._model}", flush=True)
-                return self._model
+                return self._model # type: ignore
             print(f"[Judge] No models returned from {self._url}", flush=True)
         except Exception as e:
             print(f"[Judge] Could not fetch model from {self._url}: {e}", flush=True)
