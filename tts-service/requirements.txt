@@ -1,7 +1,32 @@
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-pydantic>=2.0.0
-torch
-numpy
-soundfile
-qwen-tts
+# requirements.txt — Qwen3-TTS streaming service for RunPod (A40, CUDA 12.8)
+
+# ── Web server ───────────────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+
+# ── Audio I/O ────────────────────────────────────────────────────────────────
+soundfile>=0.12.1
+numpy>=1.26.0
+
+# ── TTS model (the dffdeeq fork, installed editable from /workspace) ─────────
+# Install separately with:
+#   cd /workspace/Qwen3-TTS-streaming && uv pip install -e .
+# Do NOT pin qwen-tts here — the editable install handles it.
+
+# ── Transitive runtime deps of the fork ──────────────────────────────────────
+# These are normally pulled by `pip install -e .` of the fork, but listing
+# them here protects against accidental upgrades that break compilation.
+transformers>=4.57.0
+accelerate>=1.0.0
+librosa>=0.10.2
+torchaudio>=2.8.0
+
+# ── NOT included (must already be present in the venv) ───────────────────────
+# torch==2.8.0+cu128         — install with: uv pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+# flash-attn==2.8.3          — install with: uv pip install flash-attn==2.8.3 --no-build-isolation
+# These are excluded because pip will try to upgrade/reinstall them with the
+# wrong CUDA variant if listed here.
+
+# ── System packages (apt, not pip) ───────────────────────────────────────────
+# apt-get install -y ffmpeg sox libsox-fmt-all

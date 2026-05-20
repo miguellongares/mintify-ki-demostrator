@@ -1,0 +1,53 @@
+# tts_repl.py
+import torch
+import soundfile as sf
+import time
+import os
+from qwen_tts import Qwen3TTSModel
+
+print("Loading model...")
+t0 = time.time()
+model = Qwen3TTSModel.from_pretrained(
+    "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    device_map="auto",
+    dtype=torch.bfloat16,
+)
+print(f"Model loaded in {time.time() - t0:.1f}s")
+
+# ---- Defaults ----
+DEFAULT_INSTRUCT = "Male, native German speaker, middle-aged, expert in finance and professional tone."
+DEFAULT_LANGUAGE = "german"
+
+os.makedirs("tts_out", exist_ok=True)
+_run_idx = 0
+
+def say(text, instruct=DEFAULT_INSTRUCT, language=DEFAULT_LANGUAGE, tag="run"):
+    global _run_idx
+    _run_idx += 1
+
+    t0 = time.time()
+    wavs, sr = model.generate_voice_design(
+        text=text,
+        language=language,
+        instruct=instruct,
+    )
+    gen_s = time.time() - t0
+    audio_s = wavs[0].shape[-1] / sr
+    rtf = gen_s / audio_s
+
+    path = f"tts_out/{_run_idx:03d}_{tag}.wav"
+    sf.write(path, wavs[0], sr)
+
+    print(f"--- run {_run_idx} ---")
+    print(f"  file       : {path}")
+    print(f"  text       : {text[:80]}{'...' if len(text) > 80 else ''}")
+    print(f"  language   : {language}")
+    print(f"  instruct   : {instruct[:80]}{'...' if len(instruct) > 80 else ''}")
+    print(f"  sample rate: {sr} Hz")
+    print(f"  audio      : {audio_s:.2f}s")
+    print(f"  generation : {gen_s:.2f}s")
+    print(f"  RTF        : {rtf:.2f}  ({'faster' if rtf < 1 else 'slower'} than real-time)")
+    return path
+
+print("\nReady. Usage: say('your text here')")
+print("Optional kwargs: instruct=..., language=..., tag=...\n")
