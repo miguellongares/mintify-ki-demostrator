@@ -3,25 +3,21 @@ Qwen3-TTS inference server for RunPod.
 
 Endpoints:
     POST /v1/audio/speech         — blocking, returns full WAV
-    POST /v1/audio/speech/stream  — streaming MP3 (sentence-chunked)
+    POST /v1/audio/speech/stream  — streaming MP3 (chunked PCM via ffmpeg)
     GET  /health                  — liveness
 
-Run on RunPod with:
+Run on RunPod:
     uvicorn main:app --host 0.0.0.0 --port 8006
 
-Then open SSH tunnel on your local machine:
-    ssh -N -L 8006:localhost:8006 ...
-
-Requires ffmpeg installed on the RunPod host (apt-get install -y ffmpeg).
+Requires ffmpeg on host:
+    apt-get install -y ffmpeg
 """
 
+import asyncio
 import io
-import re
 import subprocess
-import threading
-from concurrent.futures import ThreadPoolExecutor
+import time
 from contextlib import asynccontextmanager
-from queue import Queue
 
 import numpy as np
 import soundfile as sf
@@ -31,26 +27,72 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from qwen_tts import Qwen3TTSModel
 
-MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+# ── Config ───────────────────────────────────────────────────────────────────
+MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+REF_AUDIO = "/workspace/tts_service/german_ref.wav"
+REF_TEXT = (
+    "Der durchschnittliche Zinssatz für Tagesgeldkonten beträgt derzeit "
+    "3,75 Prozent – deutlich höher als noch vor zwölf Monaten."
+    "ür spezifische Sparstrategien oder Unterstützung bei der Finanzplanung würde ich"
+    "empfehlen, sich an einen Finanzberater oder eine Finanzberatungsstelle zu wenden."
+)
+
 DEFAULT_INSTRUCT = (
     "Male, native German speaker, middle-aged, expert in finance and professional tone."
 )
-MIN_SENTENCE_CHARS = 40
+EMIT_EVERY = 4
+DECODE_WINDOW = 80
 MP3_BITRATE = "96k"
+SAMPLE_RATE = 24000
+
+torch.set_float32_matmul_precision("high")
 
 _model: Qwen3TTSModel | None = None
+_voice_prompt = None
+_tts_lock = asyncio.Lock()  # serialize TTS requests (CUDA graphs aren't thread-safe)
 
 
+# ── Lifespan: load + warmup ─────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model
+    global _model, _voice_prompt
+
     print(f"[TTS] Loading {MODEL_ID} ...", flush=True)
+    t0 = time.time()
     _model = Qwen3TTSModel.from_pretrained(
         MODEL_ID,
-        device_map="auto",
-        dtype=torch.float16,
+        device_map="cuda:0",
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
     )
-    print("[TTS] Model ready.", flush=True)
+    print(f"[TTS] Model loaded in {time.time()-t0:.1f}s", flush=True)
+
+    print("[TTS] Creating voice clone prompt...", flush=True)
+    _voice_prompt = _model.create_voice_clone_prompt(ref_audio=REF_AUDIO, ref_text=REF_TEXT)
+
+    print("[TTS] Enabling streaming optimizations...", flush=True)
+    _model.enable_streaming_optimizations(
+        decode_window_frames=DECODE_WINDOW,
+        use_compile=True,
+        use_cuda_graphs=False,
+        compile_mode="reduce-overhead",
+        use_fast_codebook=True,
+        compile_codebook_predictor=True,
+        compile_talker=True,
+    )
+
+    print("[TTS] Warming up (compilation, ~90-180s)...", flush=True)
+    warmup_texts = [
+        "Test eins zwei drei vier fünf. Test eins zwei drei vier fünf.",
+        "Hallo, wie geht es dir? Das ist der zweite Aufwärmlauf.",
+        "Der dritte Testlauf zum vollständigen Aufwärmen aller Modellkomponenten.",
+    ]
+    for i, text in enumerate(warmup_texts, 1):
+        t0 = time.time()
+        chunks = list(_stream_chunks(text))
+        print(f"[TTS] Warmup {i}: {time.time()-t0:.1f}s, {len(chunks)} chunks", flush=True)
+
+    print("[TTS] Ready.", flush=True)
     yield
     _model = None
 
@@ -58,144 +100,89 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+# ── Models ───────────────────────────────────────────────────────────────────
 class SpeechRequest(BaseModel):
     input: str
-    task_type: str = "VoiceDesign"
-    instructions: str = DEFAULT_INSTRUCT
+    task_type: str = "VoiceClone"           # kept for API compatibility, not used
+    instructions: str = DEFAULT_INSTRUCT    # kept for API compatibility, not used
 
 
-def _synthesize(text: str, instruct: str) -> tuple[np.ndarray, int]:
-    wavs, sr = _model.generate_voice_design(  # type: ignore[union-attr]
+# ── Core generator ──────────────────────────────────────────────────────────
+def _stream_chunks(text: str):
+    """Yield PCM float32 numpy arrays as the model produces them."""
+    for chunk, _sr in _model.stream_generate_voice_clone(  # type: ignore[union-attr]
         text=text,
-        language="German",
-        instruct=instruct,
-    )
-    wav = wavs[0]
-    if hasattr(wav, "detach"):
-        wav = wav.detach().cpu().numpy()
-    return np.asarray(wav, dtype=np.float32), int(sr)
+        language="german",
+        voice_clone_prompt=_voice_prompt,
+        emit_every_frames=EMIT_EVERY,
+        decode_window_frames=DECODE_WINDOW,
+        overlap_samples=0,
+    ):
+        yield np.asarray(chunk, dtype=np.float32)
 
 
+# ── Endpoints ────────────────────────────────────────────────────────────────
 @app.post("/v1/audio/speech")
-def audio_speech(req: SpeechRequest) -> Response:
+async def audio_speech(req: SpeechRequest) -> Response:
     if _model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    wav, sr = _synthesize(req.input, req.instructions)
+    async with _tts_lock:
+        chunks = await asyncio.to_thread(lambda: list(_stream_chunks(req.input)))
+
+    if not chunks:
+        raise HTTPException(status_code=500, detail="No audio generated")
+
+    wav = np.concatenate(chunks)
     buf = io.BytesIO()
-    sf.write(buf, wav, sr, format="WAV")
+    sf.write(buf, wav, SAMPLE_RATE, format="WAV")
     return Response(content=buf.getvalue(), media_type="audio/wav")
 
 
-# ── streaming ────────────────────────────────────────────────────────────────
-
-_SENT_SPLIT = re.compile(r"(?<=[.!?;])\s+|\n+")
-
-
-def split_sentences_de(text: str, min_chars: int = MIN_SENTENCE_CHARS) -> list[str]:
-    """Split text on sentence-ending punctuation. Merge fragments shorter than
-    `min_chars` into the next chunk so prosody isn't choppy."""
-    raw = [s.strip() for s in _SENT_SPLIT.split(text) if s and s.strip()]
-    if not raw:
-        return []
-    merged: list[str] = []
-    buf = ""
-    for s in raw:
-        buf = f"{buf} {s}".strip() if buf else s
-        if len(buf) >= min_chars:
-            merged.append(buf)
-            buf = ""
-    if buf:
-        if merged:
-            merged[-1] = f"{merged[-1]} {buf}".strip()
-        else:
-            merged.append(buf)
-    return merged
-
-
-def _spawn_ffmpeg(sr: int) -> subprocess.Popen:
-    return subprocess.Popen(
-        [
-            "ffmpeg", "-loglevel", "error",
-            "-f", "f32le", "-ar", str(sr), "-ac", "1", "-i", "pipe:0",
-            "-f", "mp3", "-b:a", MP3_BITRATE, "pipe:1",
-        ],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-    )
-
-
 @app.post("/v1/audio/speech/stream")
-def audio_speech_stream(req: SpeechRequest) -> StreamingResponse:
+async def audio_speech_stream(req: SpeechRequest) -> StreamingResponse:
     if _model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    sentences = split_sentences_de(req.input)
-    if not sentences:
-        raise HTTPException(status_code=400, detail="Empty input after sentence split")
+    print(f"[TTS] Streaming {len(req.input)} chars", flush=True)
 
-    print(f"[TTS] Streaming {len(sentences)} sentence(s) for {len(req.input)} chars",
-          flush=True)
+    async def mp3_stream():
+        async with _tts_lock:
+            ff = subprocess.Popen(
+                [
+                    "ffmpeg", "-loglevel", "error",
+                    "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+                    "-f", "mp3", "-b:a", MP3_BITRATE, "pipe:1",
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+            )
 
-    # Probe sample rate on the first sentence; we need it to configure ffmpeg.
-    first_wav, sr = _synthesize(sentences[0], req.instructions)
+            # Feed PCM into ffmpeg in a background thread, read MP3 out here.
+            def feed():
+                try:
+                    for chunk in _stream_chunks(req.input):
+                        ff.stdin.write(chunk.tobytes())
+                        ff.stdin.flush()
+                finally:
+                    try:
+                        ff.stdin.close()
+                    except Exception:
+                        pass
 
-    ff = _spawn_ffmpeg(sr)
+            feeder = asyncio.create_task(asyncio.to_thread(feed))
 
-    # Order-preserving queue of completed PCM chunks fed by a worker pool.
-    pending: Queue[tuple[int, np.ndarray | None]] = Queue()
-    executor = ThreadPoolExecutor(max_workers=2)
-
-    def _job(idx: int, text: str):
-        try:
-            wav, _ = _synthesize(text, req.instructions)
-            pending.put((idx, wav))
-        except Exception as e:
-            print(f"[TTS] sentence {idx} failed: {e}", flush=True)
-            pending.put((idx, None))
-
-    # Sentence 0 already done; submit the rest.
-    pending.put((0, first_wav))
-    for i, s in enumerate(sentences[1:], start=1):
-        executor.submit(_job, i, s)
-
-    def _feeder():
-        next_idx = 0
-        buffered: dict[int, np.ndarray | None] = {}
-        total = len(sentences)
-        try:
-            while next_idx < total:
-                if next_idx in buffered:
-                    wav = buffered.pop(next_idx)
-                else:
-                    idx, wav = pending.get()
-                    if idx != next_idx:
-                        buffered[idx] = wav
-                        continue
-                if wav is not None:
-                    ff.stdin.write(wav.tobytes())  # type: ignore[union-attr]
-                    ff.stdin.flush()  # type: ignore[union-attr]
-                next_idx += 1
-        finally:
             try:
-                ff.stdin.close()  # type: ignore[union-attr]
-            except Exception:
-                pass
+                while True:
+                    mp3_chunk = await asyncio.to_thread(ff.stdout.read, 4096)
+                    if not mp3_chunk:
+                        break
+                    yield mp3_chunk
+            finally:
+                await feeder
+                ff.wait()
 
-    threading.Thread(target=_feeder, daemon=True).start()
-
-    def _reader():
-        try:
-            while True:
-                chunk = ff.stdout.read(16384)  # type: ignore[union-attr]
-                if not chunk:
-                    break
-                yield chunk
-        finally:
-            ff.wait()
-            executor.shutdown(wait=False)
-
-    return StreamingResponse(_reader(), media_type="audio/mpeg")
+    return StreamingResponse(mp3_stream(), media_type="audio/mpeg")
 
 
 @app.get("/health")
