@@ -10,7 +10,7 @@
 		judgeLoading = true;
 		judgeResults = null;
 		try {
-			const judgeUrl = `${window.location.protocol}//${window.location.hostname}:8088/api/judge`;
+			const judgeUrl = `${window.location.origin}/rag-api/api/judge`;
 			const resp = await fetch(judgeUrl, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
