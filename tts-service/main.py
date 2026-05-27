@@ -37,9 +37,6 @@ REF_TEXT = (
     "empfehlen, sich an einen Finanzberater oder eine Finanzberatungsstelle zu wenden."
 )
 
-DEFAULT_INSTRUCT = (
-    "Male, native German speaker, middle-aged, expert in finance and professional tone."
-)
 EMIT_EVERY = 4
 DECODE_WINDOW = 80
 MP3_BITRATE = "96k"
@@ -103,8 +100,6 @@ app = FastAPI(lifespan=lifespan)
 # ── Models ───────────────────────────────────────────────────────────────────
 class SpeechRequest(BaseModel):
     input: str
-    task_type: str = "VoiceClone"           # kept for API compatibility, not used
-    instructions: str = DEFAULT_INSTRUCT    # kept for API compatibility, not used
 
 
 # ── Core generator ──────────────────────────────────────────────────────────

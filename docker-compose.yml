@@ -22,10 +22,9 @@ services:
         condition: service_started
     environment:
       - QDRANT_URL=http://qdrant:6333
-      - VLLM_BASE_URLS=${VLLM_BASE_URLS:-http://host.docker.internal:8002} #OLD: VLLM_BASE_URLS=http://host.docker.internal:8002,http://host.docker.internal:8004
+      - VLLM_BASE_URLS=${VLLM_BASE_URLS:-http://host.docker.internal:8002}
       - UPLOAD_DIR=/app/uploads
       - TTS_URL=${TTS_URL:-http://host.docker.internal:8006}
-      - TTS_VOICE_INSTRUCTIONS=${TTS_VOICE_INSTRUCTIONS:-Eine klare, professionelle weibliche Stimme auf Deutsch}
     volumes:
       - ./data/open-webui/uploads:/app/uploads  #look at the uploaded docs form the web ui knowledge
       - ./rag-backend/app:/app/app

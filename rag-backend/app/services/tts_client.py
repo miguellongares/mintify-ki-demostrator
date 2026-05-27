@@ -20,21 +20,17 @@ class Qwen3TTSClient(TTSClient):
       POST /v1/audio/speech          → full WAV (blocking)
       POST /v1/audio/speech/stream   → streaming MP3 (sentence-chunked)
 
-    OWUI sends the standard OpenAI /audio/speech body; this class adds the
-    voice-design `task_type` + `instructions` fields the upstream service needs.
+    OWUI sends the standard OpenAI /audio/speech body; this class proxies it to the upstream Qwen3-TTS service.
     """
 
-    def __init__(self, base_url: str, voice_instructions: str):
+    def __init__(self, base_url: str):
         self._base_url = base_url.rstrip("/")
-        self._voice_instructions = voice_instructions
 
     def _payload(self, text: str) -> dict:
         return {
             "input": text,
-            "task_type": "VoiceDesign",
-            "instructions": self._voice_instructions,
         }
-
+    # Not used for the OWUI! 
     def synthesize(self, text: str) -> bytes:
         resp = httpx.post(
             f"{self._base_url}/v1/audio/speech",

@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     top_k: int = 5
     judge_vllm_url: str = "http://host.docker.internal:8002"
     tts_url: str = ""
-    tts_voice_instructions: str = "Eine klare, professionelle weibliche Stimme auf Deutsch"
 
     @property
     def vllm_urls(self) -> list[str]:
