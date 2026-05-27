@@ -16,7 +16,11 @@ export default {
 					'green-dark': '#8fe05f',
 					tint: '#e9eef7',
 					night: '#0e1a2e',
-					chat: '#FEFFFA'
+					chat: '#FEFFFA',
+					pill: '#d4dcea',
+					'pill-dark': '#12233f',
+					'pill-active': '#c0cbdc',
+					'pill-active-dark': '#14284a'
 				},
 				gray: {
 					50: 'var(--color-gray-50, #f9f9f9)',

@@ -294,7 +294,7 @@
 			draggable="false"
 		>
 			<div class=" flex self-center flex-1 w-full">
-				<div dir="auto" class="text-left self-center overflow-hidden w-full h-[20px]">
+				<div dir="auto" class="text-left self-center overflow-hidden w-full h-[20px] font-medium">
 					{title}
 				</div>
 			</div>
@@ -305,10 +305,10 @@
 	<div
 		class="
         {id === $chatId || confirmEdit
-			? 'from-gray-200 dark:from-gray-900'
+			? 'from-mintify-pill-active dark:from-mintify-pill-active-dark'
 			: selected
-				? 'from-gray-100 dark:from-gray-950'
-				: 'invisible group-hover:visible from-gray-100 dark:from-gray-950'}
+				? 'from-mintify-pill dark:from-mintify-pill-dark'
+				: 'invisible group-hover:visible from-mintify-pill dark:from-mintify-pill-dark'}
             absolute {className === 'pr-2'
 			? 'right-[8px]'
 			: 'right-0'}  top-[4px] py-1 pr-0.5 mr-1.5 pl-5 bg-linear-to-l from-80%
