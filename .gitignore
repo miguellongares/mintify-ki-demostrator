@@ -15,3 +15,9 @@ data/
 
 # macOS
 .DS_Store
+
+#frontend development 
+open-webui-src/node_modules/
+open-webui-src/.svelte-kit/
+open-webui-src/static/pyodide/
+
