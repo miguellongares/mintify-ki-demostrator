@@ -16,16 +16,29 @@ Where the custom branding lives, so it's easy to find and tweak. All paths under
 | `mintify-tint` | `#e9eef7` | sidebar bg (light) |
 | `mintify-night` | `#0e1a2e` | sidebar bg (dark) |
 | `mintify-chat` | `#FEFFFA` | chat background |
+| `mintify-pill` | `#d4dcea` | "..." menu pill on selected/hover row (light) |
+| `mintify-pill-dark` | `#12233f` | same (dark) |
+| `mintify-pill-active` | `#c0cbdc` | "..." pill on active row (light) |
+| `mintify-pill-active-dark` | `#14284a` | same (dark) |
 
 Change a color here once → it updates everywhere.
 
 ## Logos / images
 
-All in `static/`. Swap the files (keep the names) — no code change needed.
-- `favicon.png`, `static/favicon.png` — sidebar/header/avatar icon
-- `static/splash.png`, `static/splash-dark.png` — loading screen logo
-- `static/favicon.ico`, `favicon.svg`, `favicon-96x96.png`, `apple-touch-icon.png`, `web-app-manifest-{192,512}.png` — tab / PWA icons
-- Source artwork: `static/mintify_circle.png`, `static/Square-logo-Blue.png`
+Swap the files (keep the names) — no code change needed. **Two static folders exist and BOTH must be updated:**
+
+- **Frontend** `static/` — used by in-app UI (sidebar/header/avatars, splash):
+  - `favicon.png`, `static/favicon.png` — sidebar/header/avatar icon
+  - `static/splash.png`, `static/splash-dark.png` — loading screen logo
+  - `static/favicon.ico`, `favicon.svg`, `favicon-96x96.png`, `apple-touch-icon.png`, `web-app-manifest-{192,512}.png` — PWA icons
+- **Backend** `backend/open_webui/static/` — **this is what the browser tab favicon actually loads** (the backend serves `/static/favicon.*`):
+  - `favicon.png`, `favicon.ico`, `favicon.svg`, `favicon-96x96.png`, `favicon-dark.png`, `logo.png` (manifest icon), `splash.png`, `splash-dark.png`
+- Source artwork: `static/mintify_circle.png` (circle M), `static/Square-logo-Blue.png` (full mintify logo)
+
+## Browser tab title & favicon
+
+- **Title** → `WEBUI_NAME=MINTIFY` in `docker-compose.yml`. The `" (Open WebUI)"` suffix that OWUI normally appends was removed in `backend/open_webui/env.py` (the `if WEBUI_NAME != "Open WebUI"` block).
+- **Favicon** → the backend static files above. After changing them you MUST rebuild, AND the browser caches favicons in a separate store that survives normal reloads — do a **hard refresh** (or incognito) to see the new one.
 
 ## Loading screen
 
@@ -41,6 +54,8 @@ All in `static/`. Swap the files (keep the names) — no code change needed.
 - **Chat / app background** — `src/routes/(app)/+layout.svelte` (`bg-mintify-chat`)
 - **Left sidebar bg + hovers** — `src/lib/components/layout/Sidebar.svelte`
 - **Sidebar chat item (active/selected/hover)** — `src/lib/components/layout/Sidebar/ChatItem.svelte`
+- **"..." menu pill** (opaque, hides title behind icons; color matches the row) — `ChatItem.svelte` (the `from-mintify-pill*` gradient block)
+- **Bolder sidebar text** — chat titles (`ChatItem.svelte`), date headers like "Heute" (`Sidebar.svelte`), "Chats"/folder labels (`src/lib/components/common/Folder.svelte` — shared, also affects workspace folders)
 - **Bewertung panel (bg, border, header, hover)** — `src/lib/components/chat/JudgementPanel.svelte`
 - **Text selection, links, form accent-color** — `src/app.css` (`MINTIFY brand accents` block)
 - **Placeholder logo size + alignment** — `src/lib/components/chat/Placeholder.svelte`, `ChatPlaceholder.svelte`
@@ -51,3 +66,7 @@ All in `static/`. Swap the files (keep the names) — no code change needed.
 docker compose build open-webui && docker compose up -d open-webui
 # or for live dev: npm run dev  → localhost:5173
 ```
+
+**Gotchas:**
+- Backend changes (`env.py`, `backend/open_webui/static/`) only take effect after a **rebuild** — a running container keeps the old build.
+- Browser **favicon cache** is sticky and survives Cmd+Shift+R. Use a hard refresh / new tab / incognito to see a changed tab icon.
