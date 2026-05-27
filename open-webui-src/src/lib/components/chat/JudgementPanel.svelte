@@ -63,15 +63,15 @@
 	id="judgement-panel"
 	class="h-screen max-h-[100dvh] min-h-screen select-none {$showJudgement
 		? 'md:relative w-[350px] max-w-[350px]'
-		: 'translate-x-[350px] w-[0px]'} transition-width duration-200 ease-in-out shrink-0 bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200 text-sm fixed z-50 top-0 right-0 overflow-x-hidden border-l border-gray-200 dark:border-gray-800"
+		: 'translate-x-[350px] w-[0px]'} transition-width duration-200 ease-in-out shrink-0 bg-mintify-tint text-gray-900 dark:bg-mintify-night dark:text-gray-200 text-sm fixed z-50 top-0 right-0 overflow-x-hidden border-l border-mintify-blue/15 dark:border-mintify-blue/30"
 	data-state={$showJudgement}
 >
 	<div class="w-[350px] h-full px-4 py-4 overflow-y-auto scrollbar-hidden">
 		<div class="flex flex-col gap-3">
 			<div class="flex items-center justify-between mb-2">
-				<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Bewertung</h3>
+				<h3 class="text-sm font-semibold text-mintify-blue dark:text-mintify-green">Bewertung</h3>
 				<button
-					class="cursor-pointer p-[7px] flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+					class="cursor-pointer p-[7px] flex rounded-xl hover:bg-mintify-blue/10 dark:hover:bg-mintify-blue/25 transition"
 					on:click={() => showJudgement.set(false)}
 				>
 					<ChevronRight className="size-5" />

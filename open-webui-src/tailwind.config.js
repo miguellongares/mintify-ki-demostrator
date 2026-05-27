@@ -8,6 +8,16 @@ export default {
 	theme: {
 		extend: {
 			colors: {
+				mintify: {
+					blue: '#1C3E73',
+					'blue-light': '#2a5499',
+					'blue-dark': '#142d54',
+					green: '#A7F57E',
+					'green-dark': '#8fe05f',
+					tint: '#e9eef7',
+					night: '#0e1a2e',
+					chat: '#FEFFFA'
+				},
 				gray: {
 					50: 'var(--color-gray-50, #f9f9f9)',
 					100: 'var(--color-gray-100, #ececec)',
