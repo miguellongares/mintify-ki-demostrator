@@ -529,7 +529,7 @@
 						<img
 							crossorigin="anonymous"
 							src="{WEBUI_BASE_URL}/static/favicon.png"
-							class=" size-5 -translate-x-1.5 rounded-full"
+							class=" size-[1.875rem] -translate-x-1.5 rounded-full"
 							alt="logo"
 						/>
 					</div>
