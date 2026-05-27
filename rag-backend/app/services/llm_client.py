@@ -48,7 +48,7 @@ class LLMClient:
                     # vLLM typically returns just one, but the /v1/models spec allows many.
                     result[m["id"]] = url
             except Exception as e:
-                # Non-fatal: this URL may be a second pod that isn't always running.
+                # Non-fatal: extra endpoints in VLLM_BASE_URLS may not always be reachable.
                 print(f"[RAG] Could not fetch models from {url}: {e}")
         self._model_url_map = result
         return result

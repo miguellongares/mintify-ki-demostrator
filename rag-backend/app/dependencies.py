@@ -29,7 +29,7 @@ def init_singletons(qdrant_client):
     _judge_client = JudgeClient(settings.judge_vllm_url)
 
     if settings.tts_url:
-        _tts_client = Qwen3TTSClient(settings.tts_url, settings.tts_voice_instructions)
+        _tts_client = Qwen3TTSClient(settings.tts_url)
         print(f"[RAG] TTS client initialised → {settings.tts_url}")
     else:
         print("[RAG] TTS disabled (TTS_URL not set)")

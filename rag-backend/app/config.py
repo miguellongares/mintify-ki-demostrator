@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    vllm_base_urls: str = "http://host.docker.internal:8002,http://host.docker.internal:8004"
+    vllm_base_urls: str = "http://host.docker.internal:8002"
     qdrant_url: str = "http://qdrant:6333"
     collection_name: str = "mintify_rag"
     embedding_model: str = "all-MiniLM-L6-v2"
@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     top_k: int = 5
     judge_vllm_url: str = "http://host.docker.internal:8002"
     tts_url: str = ""
-    tts_voice_instructions: str = "Eine klare, professionelle weibliche Stimme auf Deutsch"
 
     @property
     def vllm_urls(self) -> list[str]:
