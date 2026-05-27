@@ -28,6 +28,32 @@ html {
 	word-break: break-word;
 }
 
+/* MINTIFY brand accents */
+:root {
+	accent-color: #1c3e73;
+}
+
+::selection {
+	background-color: rgba(167, 245, 126, 0.45);
+	color: #142d54;
+}
+
+.dark ::selection {
+	background-color: rgba(167, 245, 126, 0.3);
+	color: #ffffff;
+}
+
+.markdown a,
+.prose a {
+	color: #1c3e73;
+	text-decoration-color: rgba(167, 245, 126, 0.7);
+}
+
+.dark .markdown a,
+.dark .prose a {
+	color: #a7f57e;
+}
+
 code {
 	/* white-space-collapse: preserve !important; */
 	overflow-x: auto;

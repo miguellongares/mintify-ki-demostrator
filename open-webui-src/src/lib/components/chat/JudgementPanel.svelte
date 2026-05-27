@@ -63,15 +63,15 @@
 	id="judgement-panel"
 	class="h-screen max-h-[100dvh] min-h-screen select-none {$showJudgement
 		? 'md:relative w-[350px] max-w-[350px]'
-		: 'translate-x-[350px] w-[0px]'} transition-width duration-200 ease-in-out shrink-0 bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200 text-sm fixed z-50 top-0 right-0 overflow-x-hidden border-l border-gray-200 dark:border-gray-800"
+		: 'translate-x-[350px] w-[0px]'} transition-width duration-200 ease-in-out shrink-0 bg-mintify-tint text-gray-900 dark:bg-mintify-night dark:text-gray-200 text-sm fixed z-50 top-0 right-0 overflow-x-hidden border-l border-mintify-blue/15 dark:border-mintify-blue/30"
 	data-state={$showJudgement}
 >
 	<div class="w-[350px] h-full px-4 py-4 overflow-y-auto scrollbar-hidden">
 		<div class="flex flex-col gap-3">
 			<div class="flex items-center justify-between mb-2">
-				<h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Bewertung</h3>
+				<h3 class="text-sm font-semibold text-mintify-blue dark:text-mintify-green">Bewertung</h3>
 				<button
-					class="cursor-pointer p-[7px] flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+					class="cursor-pointer p-[7px] flex rounded-xl hover:bg-mintify-blue/10 dark:hover:bg-mintify-blue/25 transition"
 					on:click={() => showJudgement.set(false)}
 				>
 					<ChevronRight className="size-5" />
@@ -80,13 +80,17 @@
 
 			{#each [0, 1, 2] as i}
 				{#if judgeLoading || judgeResults === null}
-					<div class="border rounded-lg p-3 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 {judgeLoading ? 'animate-pulse' : ''}">
-						<div class="flex items-center gap-2 mb-2">
-							<div class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600"></div>
-							<div class="h-3 bg-gray-300 dark:bg-gray-600 rounded w-1/3"></div>
+					<div class="border rounded-lg p-3 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+						<div class="flex items-center gap-2.5">
+							<div
+								class="w-4 h-4 rounded-full border-2 border-mintify-blue/25 border-t-mintify-blue dark:border-mintify-green/25 dark:border-t-mintify-green {judgeLoading
+									? 'animate-spin'
+									: ''}"
+							></div>
+							<span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+								Richter {i + 1}{judgeLoading ? ' — denkt nach…' : ''}
+							</span>
 						</div>
-						<div class="h-2.5 bg-gray-300 dark:bg-gray-600 rounded w-full mb-1.5"></div>
-						<div class="h-2.5 bg-gray-300 dark:bg-gray-600 rounded w-4/5"></div>
 					</div>
 				{:else}
 					<div class="border-l-4 rounded-lg p-3 {ratingColor(judgeResults[i].rating)}">
