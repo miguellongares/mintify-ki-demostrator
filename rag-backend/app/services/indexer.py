@@ -26,6 +26,7 @@ Qdrant collection schema:
 import glob
 import hashlib
 import os
+import re
 import fitz  # pymupdf
 
 from qdrant_client import QdrantClient
@@ -111,7 +112,11 @@ class Indexer:
             return
 
         filename = os.path.basename(path)
-        print(f"[RAG] Indexing: {filename}")
+        # OWUI saves uploads as "<uuid>_<original_name>.pdf". Extract the UUID so we
+        # can filter Qdrant retrieval by which OWUI file/knowledge the user selected.
+        m = re.match(r"([0-9a-fA-F-]{36})_", filename)
+        owui_file_id = m.group(1) if m else None
+        print(f"[RAG] Indexing: {filename} (owui_file_id={owui_file_id})")
 
         doc = fitz.open(path)
         points = []
@@ -137,10 +142,11 @@ class Indexer:
                         id=id_base + page_num * 1000 + i,
                         vector=vec,
                         payload={
-                            "text": chunk,          # stored for context injection
-                            "source": filename,     # shown to user as citation
-                            "page": page_num + 1,   # 1-indexed for human readability
-                            "file_hash": h,         # enables hash-based dedup on restart
+                            "text": chunk,                  # stored for context injection
+                            "source": filename,             # shown to user as citation
+                            "page": page_num + 1,           # 1-indexed for human readability
+                            "file_hash": h,                 # enables hash-based dedup on restart
+                            "owui_file_id": owui_file_id,   # for OWUI-Knowledge filter at query time
                         },
                     )
                 )
