@@ -45,10 +45,18 @@ def _extract_file_ids(body: dict, messages: list) -> list[str] | None:
     Returns []    → model has no Knowledge attached AND no message uploads
                     → caller treats as "no retrieval" (strict scoping).
     """
+    #Understand the body structure in the pipeline: 
+    # The body contains all the possible information:
+    # system prompt,query, old querys and answers, context, model, etc.. 
     if not isinstance(body, dict):
+        print(f'The body is no dict, return None', flush=True)
         return None
+    #Inside the body we get from OWUI, the meta is extracted:
+    #which contains information like: user_id, chat_id, tool_ids, etc... 
+    #one of the information is the current selected model like KI-Experte
     meta = body.get("metadata")
     if not isinstance(meta, dict):
+        print(f'The body has no metadata, return None', flush=True)
         return None
 
     ids: list[str] = []
@@ -66,13 +74,22 @@ def _extract_file_ids(body: dict, messages: list) -> list[str] | None:
                     if not isinstance(k, dict):
                         continue
                     if k.get("type") == "file" and k.get("id"):
+                        print(f'Files directly found single:', flush=True)
+                        print(f'Name of the file localized:\n{k["name"]}\n', flush=True)
+                        print(f'And the id passed for that pfd:\n{k["id"]}\n', flush=True)
                         ids.append(str(k["id"]))
                     for sub in k.get("files") or []:
+                        print(f'======Files found in {k["name"]}=======:\n', flush=True)
                         if isinstance(sub, dict) and sub.get("id"):
+                            name_of_the_file = sub.get('meta')
+                            print(f'Name of the file localized:\n{name_of_the_file["name"]}', flush=True)
+                            print(f'And the id passed for that pfd:\n{sub["id"]}\n', flush=True)
                             ids.append(str(sub["id"]))
 
     # 2) Per-message file uploads (drag-and-drop into the chat input).
+    # It is important to understand how the drag-and-drop files are read!!
     msg_files = meta.get("files")
+    print(f'msg_files:\n{msg_files}')
     if isinstance(msg_files, list):
         saw_knowledge_field = True
         for f in msg_files:
