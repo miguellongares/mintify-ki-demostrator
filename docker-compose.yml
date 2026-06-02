@@ -24,10 +24,16 @@ services:
       - PYTHONUNBUFFERED=1
       - QDRANT_URL=http://qdrant:6333
       - VLLM_BASE_URLS=${VLLM_BASE_URLS:-http://host.docker.internal:8002}
-      - UPLOAD_DIR=/app/uploads
       - TTS_URL=${TTS_URL:-http://host.docker.internal:8006}
+      # OWUI is the single source of extracted document text. The indexer pulls
+      # a file's content from OWUI's API (by id) and embeds it into Qdrant.
+      - OWUI_BASE_URL=http://open-webui:8080
+      # Create an admin API key in OWUI (Settings → Account → API Keys) and set
+      # it here (e.g. via .env) so the indexer can read file content.
+      - OWUI_API_KEY=${OWUI_API_KEY:-}
     volumes:
-      - ./data/open-webui/uploads:/app/uploads  #look at the uploaded docs form the web ui knowledge
+      # Document text now comes from OWUI's API (by file id), not from disk —
+      # no uploads mount needed.
       - ./rag-backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -38,7 +44,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s   # allow time for embedding model load + PDF indexing
+      start_period: 120s   # allow time for embedding model load
     restart: unless-stopped
 
   pipelines:
@@ -87,6 +93,12 @@ services:
       # question into search queries for OWUI's RAG) is toggled in Admin → Settings → Interface.
       - ENABLE_RAG_HYBRID_SEARCH=false
       - RAG_TEMPLATE=
+      # Stop OWUI embedding files into its own Chroma DB. Text is still extracted
+      # into the SQL `file` table (the rag-backend pulls it from there via the API).
+      - BYPASS_EMBEDDING_AND_RETRIEVAL=true
+      # On upload / content-update / delete, OWUI notifies the rag-backend to
+      # (re)index or drop the file's vectors in Qdrant (see routers/files.py).
+      - RAG_INGEST_WEBHOOK_URL=http://mintify-rag-service:8080/api/index
       # TTS: Qwen3-TTS via rag-backend proxy → vLLM-Omni on RunPod (tunnel port 8006)
       - AUDIO_TTS_ENGINE=openai
       - AUDIO_TTS_OPENAI_API_BASE_URL=http://mintify-rag-service:8080/api

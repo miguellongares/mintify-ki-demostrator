@@ -1,4 +1,3 @@
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,7 +6,7 @@ from qdrant_client import QdrantClient
 
 from app.config import settings
 from app.dependencies import init_singletons
-from app.routers import judge, models, rag, tts
+from app.routers import index, judge, models, rag, tts
 
 _ready = False
 
@@ -18,7 +17,6 @@ async def lifespan(app: FastAPI):
     print("[RAG] Starting up...")
 
     qdrant_client = QdrantClient(url=settings.qdrant_url)
-    os.makedirs(settings.upload_dir, exist_ok=True)
     init_singletons(qdrant_client)
 
     _ready = True
@@ -40,6 +38,7 @@ app.add_middleware(
 
 app.include_router(models.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
+app.include_router(index.router, prefix="/api")
 app.include_router(judge.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 

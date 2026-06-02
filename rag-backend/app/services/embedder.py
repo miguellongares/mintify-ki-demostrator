@@ -2,7 +2,7 @@
 Embedder — converts text into dense vector representations
 -----------------------------------------------------------
 Used in two places:
-  1. At indexing time (Indexer._index_file): each PDF chunk is embedded and stored in Qdrant.
+  1. At indexing time (Indexer._index_record): each document chunk is embedded and stored in Qdrant.
   2. At query time (rag.py pipe()): the user's question is embedded for similarity search.
 
 The SAME model must be used for both operations. Embedding with a different model

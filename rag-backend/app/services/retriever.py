@@ -81,14 +81,19 @@ class Retriever:
         parts = []
         for hit in hits:
             source = hit.payload.get("source", "unbekannt")
-            page = hit.payload.get("page", "?")
+            # OWUI-extracted text is a single blob → no page numbers. Older PDF
+            # points may still carry "page"; show it when present.
+            page = hit.payload.get("page")
             score = round(hit.score, 3)   # cosine similarity, 0.0–1.0
             text = hit.payload.get("text", "")
             # Collect metadata for logging in the router (not injected into the prompt).
             hits_info.append({"source": source, "page": page, "score": score, "text": text})
             # Format for the system prompt: citation header + chunk text.
             # The LLM is instructed to reference these citations in its answer.
-            parts.append(f"[Quelle: {source}, Seite {page}, Relevanz {score}]\n{text}")
+            if page is not None:
+                parts.append(f"[Quelle: {source}, Seite {page}, Relevanz {score}]\n{text}")
+            else:
+                parts.append(f"[Quelle: {source}, Relevanz {score}]\n{text}")
 
         # Join chunks with a visible separator so the LLM can distinguish between sources.
         return "\n\n---\n\n".join(parts), hits_info

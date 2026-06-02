@@ -32,6 +32,21 @@ def _clean_user_message(msg: str) -> str:
     return cleaned.strip()
 
 
+def _strip_injected_context(text: str) -> str:
+    """Remove OWUI's injected file context from the system message.
+
+    With BYPASS_EMBEDDING_AND_RETRIEVAL on, OWUI injects the full text of any
+    attached file into the system message, wrapped as
+    <context>…<source>…</source>…</context> (OWUI's DEFAULT_RAG_TEMPLATE). We do
+    retrieval ourselves in the rag-backend, so strip those blocks before
+    forwarding — otherwise the document text would reach vLLM twice (once here,
+    once via the rag-backend's [KONTEXT]). The admin's persona text is preserved.
+    """
+    cleaned = _CONTEXT_BLOCK_RE.sub("", text)
+    cleaned = _SOURCE_RE.sub("", cleaned)
+    return cleaned.strip()
+
+
 def _extract_file_ids(body: dict, messages: list) -> list[str] | None:
     """
     Pull the OWUI file IDs the user attached as Knowledge to the active model.
@@ -176,6 +191,9 @@ class Pipeline:
         owui_system = next(
             (m["content"] for m in messages if m.get("role") == "system"), ""
         )
+        # Strip any file content OWUI injected into the system prompt — the
+        # rag-backend supplies retrieved context itself (avoids double-feeding).
+        owui_system = _strip_injected_context(owui_system)
         clean_msg = _clean_user_message(user_message)
         file_ids = _extract_file_ids(body, messages)
 

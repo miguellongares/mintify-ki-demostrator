@@ -12,9 +12,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.dependencies import get_embedder, get_indexer, get_llm_client, get_retriever
+from app.dependencies import get_embedder, get_llm_client, get_retriever
 from app.services.embedder import Embedder
-from app.services.indexer import Indexer
 from app.services.llm_client import LLMClient
 from app.services.retriever import Retriever
 
@@ -52,7 +51,6 @@ async def pipe(
     req: PipeRequest,
     embedder: Embedder = Depends(get_embedder),
     retriever: Retriever = Depends(get_retriever),
-    indexer: Indexer = Depends(get_indexer),
     llm: LLMClient = Depends(get_llm_client),
 ) -> StreamingResponse:
     print(f"\n{'='*60}")
@@ -61,14 +59,15 @@ async def pipe(
     print(f"[RAG] model_id: {req.model_id}")
     print(f"[RAG] file_ids: {req.file_ids}")
 
-    indexer.index_new_files()
-
+    # Indexing is no longer triggered here — OWUI pushes new/updated files to
+    # POST /api/index as they're uploaded (see routers/index.py).
     query_vec = embedder.encode(req.user_message)
     context, hits_info = retriever.retrieve(query_vec, req.top_k, file_ids=req.file_ids)
 
     print(f"[RAG] Retrieved {len(hits_info)} chunks:")
     for i, h in enumerate(hits_info):
-        print(f"[{i+1}] {h['source']}  page={h['page']}  score={h['score']}")
+        loc = f"page={h['page']}" if h.get("page") is not None else "(no page)"
+        print(f"[{i+1}] {h['source']}  {loc}  score={h['score']}")
 
     # OWUI per-model prompt wins; pipeline persona is only a fallback.
     chosen = req.owui_system_prompt.strip() or req.base_system_prompt.strip()
