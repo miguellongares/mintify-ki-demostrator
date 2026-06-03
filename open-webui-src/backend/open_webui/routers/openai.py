@@ -654,7 +654,10 @@ async def generate_chat_completion(
     if prefix_id:
         payload["model"] = payload["model"].replace(f"{prefix_id}.", "")
 
-    # Add user info to the payload if the model is a pipeline
+    # Add user info to the payload if the model is a pipeline.
+    # MINTIFY patch: also restore `metadata` (containing attached Knowledge file IDs,
+    # chat_id, etc.) which was popped off the payload at the top of this function.
+    # Without this, custom pipelines cannot tell which Knowledge the user attached.
     if "pipeline" in model and model.get("pipeline"):
         payload["user"] = {
             "name": user.name,
@@ -662,6 +665,8 @@ async def generate_chat_completion(
             "email": user.email,
             "role": user.role,
         }
+        if metadata:
+            payload["metadata"] = metadata
 
     url = request.app.state.config.OPENAI_API_BASE_URLS[idx]
     key = request.app.state.config.OPENAI_API_KEYS[idx]

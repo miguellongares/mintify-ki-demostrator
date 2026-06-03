@@ -1,64 +1,160 @@
 """
-Indexer — PDF ingestion pipeline
----------------------------------
-Converts PDF files in /app/uploads into searchable vector chunks stored in Qdrant.
+Indexer — ingest OWUI-extracted text into Qdrant
+-------------------------------------------------
+OWUI extracts text from EVERY uploaded file type (pdf, docx, xlsx, …) and stores
+it in its SQL `file` table. This indexer pulls that text from OWUI by file id
+(via OWUIClient) and embeds it into Qdrant — making rag-backend + Qdrant the
+single RAG system. It no longer reads files from disk or parses PDFs itself.
 
-Full indexing pipeline per file:
-  1. Compute MD5 hash of the file → skip if already in _indexed_hashes (dedup)
-  2. Open the PDF with PyMuPDF (fitz) and extract text page by page
-  3. Split each page's text into overlapping chunks (chunk_size chars, chunk_overlap overlap)
-  4. Embed each chunk with Embedder.encode() → 384-dim float vector
-  5. Upsert all PointStructs into Qdrant in a single batch call
+Per file:
+  1. Fetch {filename, content, hash} from OWUI by file id
+  2. Skip if (file_id → hash) is unchanged since last index (dedup)
+  3. Delete any existing points for this file id (so re-index / shrink is clean)
+  4. Split content into overlapping chunks (chunk_size / chunk_overlap)
+  5. Embed each chunk and upsert into Qdrant
 
 Deterministic Qdrant point IDs:
-  Each chunk's ID is computed as:
-    id = int(md5_hex, 16) % (2**53) + page_num * 1000 + chunk_index
-  This means re-indexing the SAME file produces the SAME IDs → upsert() overwrites
-  existing points instead of creating duplicates. Do NOT change this formula without
-  also wiping the Qdrant collection (otherwise old and new IDs would coexist).
+    id = int(file_id_hex, 16) % (2**53) + chunk_index
+  where file_id_hex is the OWUI file UUID with hyphens removed. Re-indexing the
+  same file produces the same base id, and stale points are deleted first, so
+  the collection stays consistent. (Changed from the old PDF page*1000+i scheme
+  — the Qdrant collection must be cleared once when migrating.)
 
-Qdrant collection schema:
-  - Vector size: 384 (must match all-MiniLM-L6-v2 output dimension)
-  - Distance: COSINE (normalised dot product — standard for semantic similarity)
-  - Payload fields per point: text, source (filename), page, file_hash
+Qdrant payload per point: text, source (filename), owui_file_id, file_hash,
+chunk_index. The retriever filters on `owui_file_id`, so that field is required.
 """
 
-import glob
 import hashlib
-import os
-import fitz  # pymupdf
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    FilterSelector,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
 
 from app.config import Settings
 from app.services.embedder import Embedder
+from app.services.owui_client import OWUIClient
 
 
 class Indexer:
-    def __init__(self, embedder: Embedder, qdrant: QdrantClient, settings: Settings):
+    def __init__(
+        self,
+        embedder: Embedder,
+        qdrant: QdrantClient,
+        settings: Settings,
+        owui: OWUIClient,
+    ):
         self._embedder = embedder
         self._qdrant = qdrant
         self._settings = settings
-        # In-memory cache of already-indexed file hashes. Avoids Qdrant reads on every request.
-        self._indexed_hashes: set[str] = set()
+        self._owui = owui
+        # In-memory map of owui_file_id → file_hash for already-indexed files.
+        # Lets us skip re-embedding unchanged files without re-reading Qdrant.
+        self._indexed: dict[str, str] = {}
 
     def startup(self):
-        """Called once from init_singletons() after all services are initialised."""
-        self._ensure_collection()        # create Qdrant collection if it doesn't exist
-        self._prefetch_indexed_hashes()  # load known hashes from existing Qdrant points
-        self._index_all_files()          # index any PDFs not yet in Qdrant
+        """Called once at boot. Does NOT touch OWUI (it may not be up yet) —
+        the collection is created and known files are loaded from Qdrant; actual
+        ingestion is driven by the OWUI webhook (POST /api/index) and /api/sync."""
+        self._ensure_collection()
+        self._prefetch_indexed()
 
-    def index_new_files(self):
-        """
-        Called on every pipe() request to pick up PDFs uploaded after startup.
-        Hashing ensures only truly new files are processed — no extra Qdrant reads.
-        """
-        pattern = os.path.join(self._settings.upload_dir, "**", "*.pdf")
-        for path in glob.glob(pattern, recursive=True):
-            if self._file_hash(path) not in self._indexed_hashes:
-                print(f"[RAG] New file detected: {os.path.basename(path)}")
-                self._index_file(path)
+    # ------------------------------------------------------------------ public
+
+    def index_file_id(self, file_id: str) -> int:
+        """Fetch one file's text from OWUI and (re)index it. Returns chunk count."""
+        record = self._owui.fetch_file(file_id)
+        if not record:
+            print(f"[RAG] Skipping {file_id}: not retrievable from OWUI.", flush=True)
+            return 0
+        return self._index_record(record)
+
+    def sync_all(self) -> dict:
+        """Backfill: index every OWUI file that isn't already up to date."""
+        files = self._owui.list_files()
+        total_chunks = 0
+        indexed_files = 0
+        for record in files:
+            chunks = self._index_record(record)
+            if chunks:
+                indexed_files += 1
+                total_chunks += chunks
+        print(
+            f"[RAG] sync_all: {indexed_files}/{len(files)} files indexed, "
+            f"{total_chunks} chunks total.",
+            flush=True,
+        )
+        return {"files_seen": len(files), "files_indexed": indexed_files, "chunks": total_chunks}
+
+    def delete_file_id(self, file_id: str) -> None:
+        """Remove all Qdrant points for a file (called when OWUI deletes it)."""
+        self._delete_points(file_id)
+        self._indexed.pop(file_id, None)
+        print(f"[RAG] Deleted Qdrant points for owui_file_id={file_id}", flush=True)
+
+    # ------------------------------------------------------------------ internal
+
+    def _index_record(self, record: dict) -> int:
+        file_id = record["id"]
+        content = record.get("content") or ""
+        filename = record.get("filename") or file_id
+        if not content.strip():
+            print(f"[RAG] {filename} ({file_id}): no extracted text — skipped.", flush=True)
+            return 0
+
+        h = record.get("hash") or hashlib.md5(content.encode("utf-8")).hexdigest()
+        if self._indexed.get(file_id) == h:
+            # Unchanged since last index.
+            return 0
+
+        # Drop any stale points first so re-index / fewer-chunks stays consistent.
+        self._delete_points(file_id)
+
+        id_base = int(file_id.replace("-", ""), 16) % (2**53)
+        points = []
+        for i, chunk in enumerate(self._chunk_text(content)):
+            vec = self._embedder.encode(chunk)
+            points.append(
+                PointStruct(
+                    id=id_base + i,
+                    vector=vec,
+                    payload={
+                        "text": chunk,
+                        "source": filename,
+                        "owui_file_id": file_id,
+                        "file_hash": h,
+                        "chunk_index": i,
+                    },
+                )
+            )
+
+        if points:
+            self._qdrant.upsert(
+                collection_name=self._settings.collection_name,
+                points=points,
+            )
+        self._indexed[file_id] = h
+        print(f"[RAG] Indexed {len(points)} chunks from '{filename}' ({file_id})", flush=True)
+        return len(points)
+
+    def _delete_points(self, file_id: str) -> None:
+        try:
+            self._qdrant.delete(
+                collection_name=self._settings.collection_name,
+                points_selector=FilterSelector(
+                    filter=Filter(
+                        must=[FieldCondition(key="owui_file_id", match=MatchValue(value=file_id))]
+                    )
+                ),
+            )
+        except Exception as e:
+            print(f"[RAG] delete points failed for {file_id}: {e}", flush=True)
 
     def _ensure_collection(self):
         """Create the Qdrant collection if it doesn't already exist."""
@@ -72,96 +168,27 @@ class Indexer:
             )
             print(f"[RAG] Created Qdrant collection '{self._settings.collection_name}'")
 
-    def _prefetch_indexed_hashes(self):
-        """
-        Read file_hash payloads from existing Qdrant points to rebuild the in-memory
-        set without re-reading files from disk. This prevents re-indexing on container restart.
-        limit=10000 is a safe upper bound; scroll() returns all points up to that limit.
-        """
+    def _prefetch_indexed(self):
+        """Rebuild the owui_file_id → file_hash map from existing Qdrant points so
+        a container restart doesn't re-embed everything."""
         try:
             scroll_result = self._qdrant.scroll(
                 collection_name=self._settings.collection_name,
-                with_payload=["file_hash"],
+                with_payload=["owui_file_id", "file_hash"],
                 limit=10000,
             )
             for point in scroll_result[0]:
+                fid = point.payload.get("owui_file_id")
                 h = point.payload.get("file_hash")
-                if h:
-                    self._indexed_hashes.add(h)
-            print(f"[RAG] Pre-loaded {len(self._indexed_hashes)} known file hashes from Qdrant")
+                if fid and h:
+                    self._indexed[fid] = h
+            print(f"[RAG] Pre-loaded {len(self._indexed)} indexed files from Qdrant")
         except Exception as e:
-            print(f"[RAG] Could not pre-fetch hashes: {e}")
-
-    def _index_all_files(self):
-        """Call _index_file() for every PDF in the upload directory."""
-        pattern = os.path.join(self._settings.upload_dir, "**", "*.pdf")
-        files = glob.glob(pattern, recursive=True)
-        print(f"[RAG] Found {len(files)} PDF(s) in {self._settings.upload_dir}")
-        for path in files:
-            self._index_file(path)
-
-    def _index_file(self, path: str):
-        """
-        Full indexing pipeline for a single PDF file.
-        """
-
-        h = self._file_hash(path)
-        if h in self._indexed_hashes:
-            # Already indexed 
-            return
-
-        filename = os.path.basename(path)
-        print(f"[RAG] Indexing: {filename}")
-
-        doc = fitz.open(path)
-        points = []
-
-        # Deterministic base ID derived from the file hash.
-        # int(hex_string, 16) converts the MD5 hex digest to an integer.
-        # % (2**53) keeps it within JavaScript's safe integer range (Qdrant IDs are 64-bit
-        # but some clients use JS numbers, so this avoids precision loss).
-        id_base = int(h, 16) % (2**53)
-
-        for page_num, page in enumerate(doc):
-            text = page.get_text()
-            if not text.strip():
-                # Skip blank pages (scanned images, cover pages, etc.)
-                continue
-            for i, chunk in enumerate(self._chunk_text(text)):
-                vec = self._embedder.encode(chunk)
-                points.append(
-                    PointStruct(
-                        # page_num * 1000 + i ensures unique IDs within the same file.
-                        # Assumes no page has more than 1000 chunks (chunk_size=800 chars
-                        # per typical page of ~2000 chars → max ~3 chunks per page).
-                        id=id_base + page_num * 1000 + i,
-                        vector=vec,
-                        payload={
-                            "text": chunk,          # stored for context injection
-                            "source": filename,     # shown to user as citation
-                            "page": page_num + 1,   # 1-indexed for human readability
-                            "file_hash": h,         # enables hash-based dedup on restart
-                        },
-                    )
-                )
-
-        if points:
-            # upsert() inserts new points or overwrites existing ones with the same ID.
-            # Because IDs are deterministic, re-indexing the same file is idempotent.
-            self._qdrant.upsert(
-                collection_name=self._settings.collection_name,
-                points=points,
-            )
-
-        doc.close()
-        self._indexed_hashes.add(h)
-        print(f"[RAG] Indexed {len(points)} chunks from '{filename}'")
+            print(f"[RAG] Could not pre-fetch indexed files: {e}")
 
     def _chunk_text(self, text: str) -> list[str]:
-        """
-        Split text into overlapping fixed-size chunks.
-        Overlap prevents context loss at chunk boundaries 
-        """
+        """Split text into overlapping fixed-size chunks. Overlap prevents context
+        loss at chunk boundaries."""
         size = self._settings.chunk_size
         overlap = self._settings.chunk_overlap
         chunks, start = [], 0
@@ -172,8 +199,3 @@ class Indexer:
                 break
             start += size - overlap
         return chunks
-
-    def _file_hash(self, path: str) -> str:
-        """MD5 hash of the entire file content — used as a dedup key."""
-        with open(path, "rb") as f:
-            return hashlib.md5(f.read()).hexdigest()

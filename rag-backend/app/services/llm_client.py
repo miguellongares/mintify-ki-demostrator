@@ -76,6 +76,13 @@ class LLMClient:
         """
         Send an OpenAI-compatible chat completion request to vLLM and stream back tokens.
         """
+        debug = True
+        #For debug purpose: 
+        if debug == True:
+            for num, message in enumerate(messages):
+                print(f'------Message {num+1}-------')
+                print(message)
+
         url = self._resolve_url(model)
         # Point the OpenAI client at the specific vLLM instance serving this model.
         client = OpenAI(base_url=f"{url}/v1", api_key="vllm")

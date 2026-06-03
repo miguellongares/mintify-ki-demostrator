@@ -1,9 +1,12 @@
+import json as _json
 import logging
 import os
+import threading
 import uuid
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional
+from urllib import request as _urlrequest
 from urllib.parse import quote
 
 from fastapi import (
@@ -39,6 +42,37 @@ log.setLevel(SRC_LOG_LEVELS["MODELS"])
 
 
 router = APIRouter()
+
+
+############################
+# MINTIFY: notify the rag-backend so it can (re)index file text into Qdrant.
+# OWUI extracts the text (any file type) and stores it; the rag-backend is the
+# single RAG system. Fired in a daemon thread so uploads never block on it.
+############################
+
+
+def _notify_rag_backend(method: str, file_id: str) -> None:
+    base = os.environ.get("RAG_INGEST_WEBHOOK_URL", "")
+    if not base:
+        return
+
+    def _send():
+        try:
+            if method == "DELETE":
+                req = _urlrequest.Request(f"{base}/{file_id}", method="DELETE")
+            else:
+                payload = _json.dumps({"file_id": file_id}).encode()
+                req = _urlrequest.Request(
+                    base,
+                    data=payload,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+            _urlrequest.urlopen(req, timeout=60)
+        except Exception as e:
+            log.warning(f"RAG ingest webhook {method} failed for {file_id}: {e}")
+
+    threading.Thread(target=_send, daemon=True).start()
 
 
 ############################
@@ -133,6 +167,8 @@ def upload_file(
                     process_file(request, ProcessFileForm(file_id=id), user=user)
 
                 file_item = Files.get_file_by_id(id=id)
+                # MINTIFY: text is now extracted → tell the rag-backend to index it.
+                _notify_rag_backend("POST", id)
             except Exception as e:
                 log.exception(e)
                 log.error(f"Error processing file: {file_item.id}")
@@ -334,6 +370,8 @@ async def update_file_data_content_by_id(
                 user=user,
             )
             file = Files.get_file_by_id(id=id)
+            # MINTIFY: content changed → re-index in the rag-backend.
+            _notify_rag_backend("POST", id)
         except Exception as e:
             log.exception(e)
             log.error(f"Error processing file: {file.id}")
@@ -544,6 +582,8 @@ async def delete_file_by_id(id: str, user=Depends(get_verified_user)):
 
         result = Files.delete_file_by_id(id)
         if result:
+            # MINTIFY: drop this file's vectors from the rag-backend's Qdrant too.
+            _notify_rag_backend("DELETE", id)
             try:
                 Storage.delete_file(file.path)
             except Exception as e:

@@ -7,6 +7,7 @@ semantically similar PDF chunks from the Qdrant collection.
 """
 
 from qdrant_client import QdrantClient
+from qdrant_client.models import FieldCondition, Filter, MatchAny
 
 
 class Retriever:
@@ -14,7 +15,12 @@ class Retriever:
         self._qdrant = qdrant
         self._collection = collection
 
-    def retrieve(self, query_vec: list[float], top_k: int) -> tuple[str, list[dict]]:
+    def retrieve(
+        self,
+        query_vec: list[float],
+        top_k: int,
+        file_ids: list[str] | None = None,
+    ) -> tuple[str, list[dict]]:
         """
         Search for the top-K most similar chunks to query_vec.
 
@@ -37,12 +43,26 @@ class Retriever:
             print("[RAG] No documents in Qdrant — returning fallback.")
             return "Noch keine Dokumente im Wissensspeicher.", []
 
+        # Scope retrieval to the OWUI files/knowledge the user has attached to the
+        # model. Empty list → no Knowledge attached → retrieve nothing, so the LLM
+        # answers from its own knowledge instead of leaking the whole index.
+        query_filter = None
+        if file_ids is not None:
+            if not file_ids:
+                print("[RAG] No OWUI knowledge attached — skipping retrieval.")
+                return "", []
+            query_filter = Filter(
+                must=[FieldCondition(key="owui_file_id", match=MatchAny(any=file_ids))]
+            )
+            print(f"[RAG] Filtering Qdrant by owui_file_id ∈ {file_ids}")
+
         try:
             result = self._qdrant.query_points(
                 collection_name=self._collection,
                 query=query_vec,
                 limit=min(top_k, n),
                 with_payload=True,
+                query_filter=query_filter,
             )
             hits = result.points
         except Exception as e:
@@ -61,14 +81,19 @@ class Retriever:
         parts = []
         for hit in hits:
             source = hit.payload.get("source", "unbekannt")
-            page = hit.payload.get("page", "?")
+            # OWUI-extracted text is a single blob → no page numbers. Older PDF
+            # points may still carry "page"; show it when present.
+            page = hit.payload.get("page")
             score = round(hit.score, 3)   # cosine similarity, 0.0–1.0
             text = hit.payload.get("text", "")
             # Collect metadata for logging in the router (not injected into the prompt).
             hits_info.append({"source": source, "page": page, "score": score, "text": text})
             # Format for the system prompt: citation header + chunk text.
             # The LLM is instructed to reference these citations in its answer.
-            parts.append(f"[Quelle: {source}, Seite {page}, Relevanz {score}]\n{text}")
+            if page is not None:
+                parts.append(f"[Quelle: {source}, Seite {page}, Relevanz {score}]\n{text}")
+            else:
+                parts.append(f"[Quelle: {source}, Relevanz {score}]\n{text}")
 
         # Join chunks with a visible separator so the LLM can distinguish between sources.
         return "\n\n---\n\n".join(parts), hits_info
