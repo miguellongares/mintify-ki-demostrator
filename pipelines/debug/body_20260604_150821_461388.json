@@ -1,0 +1,146 @@
+{
+  "stream": true,
+  "model": "mintify_pipeline.cyankiwi__Qwen3.5-27B-AWQ-4bit",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Du bist ein Lehrer experte in KI, der Studenten die neu im Thema KI sind Antworten auf eine leicht verständliche weise erklärt. Du basierst dich nur auf dem Kontext und wenn du nicht genug Information hast sagst du auch dass du dir unsicher bist. \n### Task:\nRespond to the user query using the provided context, incorporating inline citations in the format [id] **only when the <source> tag includes an explicit id attribute** (e.g., <source id=\"1\">).\n\n### Guidelines:\n- If you don't know the answer, clearly state that.\n- If uncertain, ask the user for clarification.\n- Respond in the same language as the user's query.\n- If the context is unreadable or of poor quality, inform the user and provide the best possible answer.\n- If the answer isn't present in the context but you possess the knowledge, explain this to the user and provide the answer using your own understanding.\n- **Only include inline citations using [id] (e.g., [1], [2]) when the <source> tag includes an id attribute.**\n- Do not cite if the <source> tag does not contain an id attribute.\n- Do not use XML tags in your response.\n- Ensure citations are concise and directly related to the information provided.\n\n### Example of Citation:\nIf the user asks about a specific topic and the information is found in a source with a provided id attribute, the response should include the citation like in the following example:\n* \"According to the study, the proposed method increases efficiency by 20% [1].\"\n\n### Output:\nProvide a clear and direct response to the user's query, including inline citations in the format [id] only when the <source> tag with id attribute is present in the context.\n\n<context>\n<source id=\"1\">Codegenerationwithgeneratedtests,2022,arXivpreprintarXiv:2207.\n10397.\n[66] S. Alagarsamy, C. Tantithamthavorn, A. Aleti, A3Test: Assertion-\naugmentedautomatedtestcasegeneration,2023,arXivpreprintarXiv:\n2302.10352.\n[67] M.Schäfer,S.Nadi,A.Eghbali,F.Tip,Adaptivetestgenerationusinga\nlargelanguagemodel,2023,arXivpreprintarXiv:2302.06527.\n[68] Z. Xie, Y. Chen, C. Zhi, S. Deng, J. Yin, ChatUniTest: a ChatGPT-based\nautomated unit test generation tool, 2023, arXiv preprint arXiv:2305.\n04764.\n[69] C.Lemieux,J.P.Inala,S.K.Lahiri,S.Sen,CODAMOSA:Escapingcoverage\nplateausintestgenerationwithpre-trainedlargelanguagemodels,in:\nInternationalConferenceonSoftwareEngineering,ICSE,2023.\n[70] M.L.Siddiq,J.Santos,R.H.Tanvir,N.Ulfat,F.A.Rifat,V.C.Lopes,Exploring\ntheeffectivenessoflargelanguagemodelsingeneratingunittests,2023,\narXivpreprintarXiv:2305.00418.\n[71] Z. Yuan, Y. Lou, M. Liu, S. Ding, K. Wang, Y. Chen, X. Peng, No more\nmanualtests?EvaluatingandimprovingChatGPTforunittestgeneration,</source>\n<source id=\"1\">manualtests?EvaluatingandimprovingChatGPTforunittestgeneration,\n2023,arXivpreprintarXiv:2305.04207.\n[72] S.Yang,CraftingUnusualProgramsforFuzzingDeepLearningLibraries\n(Ph.D.thesis),UniversityofIllinoisatUrbana-Champaign,2023.\n[73] J.Hu,Q.Zhang,H.Yin,AugmentinggreyboxfuzzingwithgenerativeAI,\n2023,arXivpreprintarXiv:2306.06782.\n[74] J. Zhao, Y. Rong, Y. Guo, Y. He, H. Chen, Understanding programs by\nexploiting(fuzzing)testcases,2023,arXivpreprintarXiv:2305.13592.\n[75] Z. Tay, Using Artificial Intelligence to Augment Bug Fuzzing, Nanyang\nTechnologicalUniversity,2023.\n[76] Y.Deng,C.S.Xia,C.Yang,S.D.Zhang,S.Yang,L.Zhang,Largelanguage\nmodelsareedge-casegenerators:Craftingunusualprogramsforfuzzing\ndeeplearninglibraries,in:2024IEEE/ACM46thInternationalConference\nonSoftwareEngineering,ICSE,2024,pp.830–842.\n[77] V.-T.Pham,M.Böhme,A.Roychoudhury,Aflnet:agreyboxfuzzerfornet-\nworkprotocols,in:2020IEEE13thInternationalConferenceonSoftware\nTesting,ValidationandVerification,ICST,IEEE,2020,pp.460–465.</source>\n<source id=\"1\">outperforming existing security test generators. This approach\nresultedin24successfulattacksacross55applications.Similarly,\nLibro[36],aframeworkthatusesLLMstoautomaticallygenerate\ntestcasestoreproducesoftwaresecuritybugs.\n4</source>\n</context>\n\n<user_query>\nTEST TEST TEST TEST\n</user_query>\n"
+    },
+    {
+      "role": "user",
+      "content": "TEST TEST TEST TEST"
+    }
+  ],
+  "user": {
+    "name": "Miguel",
+    "id": "2cc6d03f-c0fe-462b-8a73-62c776c50788",
+    "email": "longares@vago-solutions.ai",
+    "role": "admin"
+  },
+  "metadata": {
+    "user_id": "2cc6d03f-c0fe-462b-8a73-62c776c50788",
+    "chat_id": "36aafa12-cd52-4460-bdf5-fffb138b5856",
+    "message_id": "39f2cdcb-ebb6-493a-9ad3-aa87bfe6e913",
+    "session_id": "K_SdNqC8uUcSjX5GAAAF",
+    "tool_ids": null,
+    "tool_servers": [],
+    "files": null,
+    "features": {
+      "image_generation": false,
+      "code_interpreter": false,
+      "web_search": false
+    },
+    "variables": {
+      "{{USER_NAME}}": "Miguel",
+      "{{USER_LOCATION}}": "Unknown",
+      "{{CURRENT_DATETIME}}": "2026-06-04 17:08:20",
+      "{{CURRENT_DATE}}": "2026-06-04",
+      "{{CURRENT_TIME}}": "17:08:20",
+      "{{CURRENT_WEEKDAY}}": "Thursday",
+      "{{CURRENT_TIMEZONE}}": "Europe/Berlin",
+      "{{USER_LANGUAGE}}": "de-DE"
+    },
+    "model": {
+      "id": "project-manager",
+      "name": "KI Lehrer",
+      "object": "model",
+      "created": 1779994594,
+      "owned_by": "openai",
+      "info": {
+        "id": "project-manager",
+        "user_id": "2cc6d03f-c0fe-462b-8a73-62c776c50788",
+        "base_model_id": "mintify_pipeline.cyankiwi__Qwen3.5-27B-AWQ-4bit",
+        "name": "KI Lehrer",
+        "params": {
+          "system": "Du bist ein Lehrer experte in KI, der Studenten die neu im Thema KI sind Antworten auf eine leicht verständliche weise erklärt. Du basierst dich nur auf dem Kontext und wenn du nicht genug Information hast sagst du auch dass du dir unsicher bist. "
+        },
+        "meta": {
+          "profile_image_url": "/static/favicon.png",
+          "description": null,
+          "capabilities": {
+            "vision": true,
+            "usage": false,
+            "citations": true
+          },
+          "suggestion_prompts": [],
+          "tags": [],
+          "knowledge": [
+            {
+              "id": "c912bf22-4107-4084-83f4-6b8115858152",
+              "user_id": "2cc6d03f-c0fe-462b-8a73-62c776c50788",
+              "name": "KI-Wissen",
+              "description": "Papers über KI",
+              "meta": null,
+              "access_control": null,
+              "created_at": 1779995101,
+              "updated_at": 1779995137,
+              "user": {
+                "id": "2cc6d03f-c0fe-462b-8a73-62c776c50788",
+                "name": "Miguel",
+                "email": "longares@vago-solutions.ai",
+                "role": "admin",
+                "profile_image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAFgUlEQVR4Xu2bfYhUVRjG3zs7X86MWtamISFblmmaaFuaLChRUEEgbkof2ycUBP6RVBBRhNAXWIkRRNHaksX2IRoVSH8VfazlulutmMLKlmZpLhXbzow7d3bnds7s7ty5zt3Ze9YGnuA5/+3sue+8+/x8nnPuuVdr8M1ZjnDAKGARCAyLYiMEgsWDQMB4EAiBoCkA1g/XEAIBUwCsHTqEQMAUAGuHDiEQMAXA2qFDCARMAbB26BACAVMArB06hEDAFABrhw4hEDAFwNqhQwgETAGwdugQAgFTAKwdOoRAwBQAa4cOIRAwBcDaoUMIBEwBsHbgHBK6oFGsULRCppGTe9VnU3xR3wpJ3eyVFTWd/KAU/jwAhQQLSDgpqXuO+Qo09PkDMty3a0riRRbeJ7FVL/pc60i69fwp1azVRVhAItMldfcvvn9r4VSnZD+5cUo6JNZ+IaHzlhCIsXpVgIgzLOntc8xjS8Vf6t7f1H+8CBHIfwpEFRv6cqMM97YblY0selBi1z4/wTWMrOpiVnOIurLQ3y3Zj28wApJY95WEzl1EIEaqjU+eBIg4BUm/daHabA0HK18XG40rsQgkmGJnzPIDosW3wqWJuW8ekfzhtkDlI4sfktiKZ9y5Cqh3LWFkGUdWob9LQvVXla7T9w3Zj9YEApJo7pDQOQvca1XkheqXl11LIMZAcl9vkljTVs+/8nTbXLWg2NVr1U1TcfWrJ65yHY+ecT9CIMZAsrtXS+KWPSLhhBtb3z4h+YOvV60VWbJRYtdsLs1xTp8SHXfx63fQIYHyRU/yWUP0riq6dJOE593sRs/fhyS7q6lq2UTzXhVXl5Xm5A+1ysiJDolf10ogZwXk05vUrqqgXPKZV8i2i0RGTvuXLh7BHPXEVea9K6VuzkqJr3mDQM4WSOGPfepIRQkcSbmxte9pyR941be0dlS08Uk3rrInJdN+hYQvaSaQwDAmiizlEA1ER024Ya0bWwO9kt1ZeYKrJyRv/U6smfPduFLrTU6tOwRiRGOCNWQMiD4c1IeE7lA7pLcbRNQRumcU16GfvXHVvlic7AkCMeXhu6iPAdG1Unf1iURnlsraXc+K/cPLnq+JLntMossfL4ur31VcjZ700iGmRPx2WWVA4qtfk/D8Da7Y//RJ5sOrPd+SXN8p1oyL3bhS60xOrTcEYgpjkjVE/1rfdeu77/KR3qHEtwdGP1LuKbqobGTevVycoX4CmQqPySJL10y29IoVm+XG1vdbxO5+YZSHiiodWePDSR+XzPtLSz8zskypTBJZulysaZtEFrSUiX5Mib6s+HNyQ7dY0+e5sH7cKvZ+93CRQGoAxJrRIMn1+72x9M6l6vUHR1ItRyo/z/1Fh5hyKM0P4JCiE+48LFa83nVCz7bi3by+ISzF1eBRyXxQfrLLXZY5l4BAYqu2SGTh/a74GfUQSgGxUuo4ZWzYZWvL+GeMLFMkAYFYybmSvK2nanXP7mtsJoHUCEgxtm4/KFZCv4VSORyf+xM9i0BqCEQ/mtWPaP2G3fWcuoN/qeJXBFJDINa02ZK84yc/f/ifcdEhpjTU/IBryHhlvY7o9aR8OANHJLNzhe+X0yGmTIrPwY97rtIvNEz0QnS08Sm11X3YM9/u3Cx2zyv+QNRTR88jXP1a0XZ3+2zabi3mY73bW4u/8H9Wk0DAgBEIgYApANYOHUIgYAqAtUOHEAiYAmDt0CEEAqYAWDt0CIGAKQDWDh1CIGAKgLVDhxAImAJg7dAhBAKmAFg7dAiBgCkA1g4dQiBgCoC1Q4cQCJgCYO3QIQQCpgBYO3QIgYApANYOHUIgYAqAtUOHEAiYAmDt0CEEAqYAWDt0CIGAKQDWDh1CIGAKgLVDhxAImAJg7fwLjRYDEnIt/M0AAAAASUVORK5CYII="
+              },
+              "files": [
+                {
+                  "id": "750653a7-243f-47bb-810e-f92e3c888aec",
+                  "meta": {
+                    "name": "BayesianOptimization.pdf",
+                    "content_type": "application/pdf",
+                    "size": 616006,
+                    "data": {},
+                    "collection_name": "c912bf22-4107-4084-83f4-6b8115858152"
+                  },
+                  "created_at": 1779995134,
+                  "updated_at": 1779995134
+                },
+                {
+                  "id": "97b82544-2b79-47d9-a43d-0329775d8934",
+                  "meta": {
+                    "name": "LLM_securty_&_privacy.pdf",
+                    "content_type": "application/pdf",
+                    "size": 1568797,
+                    "data": {},
+                    "collection_name": "c912bf22-4107-4084-83f4-6b8115858152"
+                  },
+                  "created_at": 1779995128,
+                  "updated_at": 1779995128
+                },
+                {
+                  "id": "b266c292-5eda-4f25-8446-f3a38c63a39f",
+                  "meta": {
+                    "name": "LLMs_as_judges.pdf",
+                    "content_type": "application/pdf",
+                    "size": 3552435,
+                    "data": {},
+                    "collection_name": "c912bf22-4107-4084-83f4-6b8115858152"
+                  },
+                  "created_at": 1779995117,
+                  "updated_at": 1779995117
+                }
+              ],
+              "type": "collection"
+            }
+          ]
+        },
+        "access_control": {
+          "read": {
+            "group_ids": [],
+            "user_ids": []
+          },
+          "write": {
+            "group_ids": [],
+            "user_ids": []
+          }
+        },
+        "is_active": true,
+        "updated_at": 1779994594,
+        "created_at": 1779994594
+      },
+      "preset": true,
+      "actions": [],
+      "tags": []
+    },
+    "direct": false
+  }
+}

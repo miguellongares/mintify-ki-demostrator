@@ -176,6 +176,15 @@ class Pipeline:
     def pipe(self, user_message: str, model_id: str, messages: list, body: dict) -> Generator:
         actual_model = model_id.removeprefix(f"{self.id}.").replace("__", "/")
 
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print(f'This is the entire body passed to the pipeline without filtering:\n\n {body}\n\n', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+
+
 
         # Meta-tasks (title, tags, query gen) bypass RAG entirely.
         if _is_meta_task(user_message):
@@ -196,6 +205,14 @@ class Pipeline:
         owui_system = _strip_injected_context(owui_system)
         clean_msg = _clean_user_message(user_message)
         file_ids = _extract_file_ids(body, messages)
+
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print(f'This is the entire Clean body passed to the pipeline with filtering:\n\n {clean_msg}\n\n', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
 
         # Drop OWUI's <source>-injected user turn from history too — keep only the
         # clean text. Same regex on every prior user message.
