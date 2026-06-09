@@ -6,6 +6,7 @@
 #               reasoning-parser qwen3 | prefix-caching | thinking disabled
 #   Port 8006 → Qwen3-TTS inference server
 #               host Python (system torch 2.8.0+cu128 + FA 2.8.3)
+#   Port 5001 → Docling-service file ingestion 
 #
 # Usage:
 #   ./scripts/runpod-tunnel.sh
@@ -14,6 +15,7 @@
 # Verify with:
 #   curl http://localhost:8002/v1/models
 #   curl http://localhost:8006/health
+#   curl http://localhost:5001/health
 
 set -euo pipefail
 
@@ -36,6 +38,7 @@ INSTANCES=(
 # HEALTH_PATH is appended to http://localhost:PORT/ (no leading slash).
 EXTRA_SERVICES=(
   "qwen3-tts:8006:qwen-tts:health:cd /workspace/tts_service && uvicorn main:app --host 0.0.0.0 --port 8006"
+  "docling:5001:docling:health:cd /workspace/docling-lab && source docling-serve/bin/activate && docling-serve run --host 0.0.0.0 --port 5001"
 )
 
 # ── Step 1: start each vLLM instance if not already responding ────────────────
@@ -115,6 +118,7 @@ echo "────────────────────────�
 echo "Opening SSH tunnel:"
 echo "  localhost:8002 → RunPod:8002  (cyankiwi/Qwen3.5-27B-AWQ-4bit)"
 echo "  localhost:8006 → RunPod:8006  (Qwen3-TTS inference server)"
+echo "  localhost:5001 → RunPod:5001  (Docling server)"
 echo "Press Ctrl+C to close."
 
 ssh \
@@ -122,5 +126,6 @@ ssh \
   -o GatewayPorts=yes \
   -L "0.0.0.0:8002:localhost:8002" \
   -L "0.0.0.0:8006:localhost:8006" \
+  -L "0.0.0.0:5001:localhost:5001" \
   ${SSH_OPTS} \
   "${RUNPOD_USER}@${RUNPOD_HOST}"
