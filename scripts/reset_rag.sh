@@ -3,7 +3,7 @@
 # reset_rag.sh — full file/RAG reset for MINTIFY (DESTRUCTIVE).
 #
 # Wipes ALL uploaded files everywhere:
-#   1. OWUI `file` table (webui.db)        — drop every row
+#   1. OWUI `file` + `user_file` tables    — drop every content row and grant
 #   2. uploads directory                   — delete every stored file on disk
 #   3. Qdrant `mintify_rag` collection      — wipe + recreate, clearing the
 #                                             rag-backend's in-memory _indexed cache
@@ -36,9 +36,11 @@ if [[ "${1:-}" != "--yes" ]]; then
   [[ "$confirm" == "yes" ]] || { echo "Aborted."; exit 1; }
 fi
 
-echo "==> 1/3 Clearing OWUI file table…"
+echo "==> 1/3 Clearing OWUI file + user_file tables…"
 docker exec "$WEBUI_CONTAINER" python -c \
-  "from open_webui.models.files import Files; print('deleted_all_files:', Files.delete_all_files())"
+  "from open_webui.models.files import Files, UserFiles; \
+print('deleted_all_files:', Files.delete_all_files()); \
+print('deleted_all_grants:', UserFiles.delete_all_grants())"
 
 echo "==> 2/3 Emptying uploads directory ($UPLOADS_DIR)…"
 if [[ -d "$UPLOADS_DIR" ]]; then

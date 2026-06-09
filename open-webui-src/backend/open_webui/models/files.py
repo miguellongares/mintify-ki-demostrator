@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from typing import Optional
 
 from open_webui.internal.db import Base, JSONField, get_db
@@ -179,16 +180,15 @@ class FilesTable:
                 for file in db.query(File).filter_by(user_id=user_id).all()
             ]
 
-    def get_file_by_content_hash(
-        self, content_hash: str, user_id: str
-    ) -> Optional[FileModel]:
-        # MINTIFY dedup: find an already-stored file with the same raw-bytes hash for
-        # this user. The dedup hash lives in meta["content_hash"] (file.hash is the
-        # extracted-text hash, overwritten by process_file). The file table holds one
-        # row per unique document, so a scoped Python scan is simplest and avoids
-        # SQLite-fragile JSON-column filters.
+    def get_file_by_content_hash(self, content_hash: str) -> Optional[FileModel]:
+        # MINTIFY dedup: find an already-stored file with the same raw-bytes hash,
+        # GLOBALLY (across all users). The file table is a pure content store — one row
+        # per unique document — and per-user availability lives in the user_file grant
+        # table. The dedup hash is in meta["content_hash"] (file.hash is the
+        # extracted-text hash, overwritten by process_file). The table is small, so a
+        # Python scan is simplest and avoids SQLite-fragile JSON-column filters.
         with get_db() as db:
-            for file in db.query(File).filter_by(user_id=user_id).all():
+            for file in db.query(File).all():
                 if (file.meta or {}).get("content_hash") == content_hash:
                     return FileModel.model_validate(file)
             return None
@@ -247,3 +247,123 @@ class FilesTable:
 
 
 Files = FilesTable()
+
+
+####################
+# MINTIFY: user_file grant table
+####################
+# The `file` table is a pure content store (one row per unique document, deduped by
+# raw-bytes hash). This junction table records WHICH user can see WHICH file, so the
+# same physical file (disk bytes + Qdrant points) is shared across accounts without
+# duplication. A grant is created on every upload; content is purged only when its last
+# grant (and last KB reference) is gone.
+
+
+class UserFile(Base):
+    __tablename__ = "user_file"
+    id = Column(String, primary_key=True)  # upload_id (uuid)
+    file_id = Column(String)  # → file.id (shared content)
+    user_id = Column(String)
+    filename = Column(Text)  # per-user display name
+    meta = Column(JSON, nullable=True)
+    created_at = Column(BigInteger)
+
+
+class UserFileModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    file_id: str
+    user_id: str
+    filename: Optional[str] = None
+    meta: Optional[dict] = None
+    created_at: Optional[int]
+
+
+class UserFilesTable:
+    def insert_grant(
+        self, user_id: str, file_id: str, filename: str, meta: Optional[dict] = None
+    ) -> Optional[UserFileModel]:
+        with get_db() as db:
+            try:
+                grant = UserFile(
+                    id=str(uuid.uuid4()),
+                    file_id=file_id,
+                    user_id=user_id,
+                    filename=filename,
+                    meta=meta or {},
+                    created_at=int(time.time()),
+                )
+                db.add(grant)
+                db.commit()
+                db.refresh(grant)
+                return UserFileModel.model_validate(grant)
+            except Exception as e:
+                log.exception(f"Error inserting user_file grant: {e}")
+                return None
+
+    def get_grant(self, user_id: str, file_id: str) -> Optional[UserFileModel]:
+        with get_db() as db:
+            grant = (
+                db.query(UserFile)
+                .filter_by(user_id=user_id, file_id=file_id)
+                .first()
+            )
+            return UserFileModel.model_validate(grant) if grant else None
+
+    def has_grant(self, user_id: str, file_id: str) -> bool:
+        with get_db() as db:
+            return (
+                db.query(UserFile)
+                .filter_by(user_id=user_id, file_id=file_id)
+                .first()
+                is not None
+            )
+
+    def get_file_ids_by_user_id(self, user_id: str) -> list[str]:
+        with get_db() as db:
+            return [
+                g.file_id
+                for g in db.query(UserFile).filter_by(user_id=user_id).all()
+            ]
+
+    def count_grants_for_file(
+        self, file_id: str, exclude_user_id: Optional[str] = None
+    ) -> int:
+        with get_db() as db:
+            q = db.query(UserFile).filter_by(file_id=file_id)
+            if exclude_user_id:
+                q = q.filter(UserFile.user_id != exclude_user_id)
+            return q.count()
+
+    def delete_grant(self, user_id: str, file_id: str) -> bool:
+        with get_db() as db:
+            try:
+                db.query(UserFile).filter_by(
+                    user_id=user_id, file_id=file_id
+                ).delete()
+                db.commit()
+                return True
+            except Exception:
+                return False
+
+    def delete_grants_by_file_id(self, file_id: str) -> bool:
+        with get_db() as db:
+            try:
+                db.query(UserFile).filter_by(file_id=file_id).delete()
+                db.commit()
+                return True
+            except Exception:
+                return False
+
+    def delete_all_grants(self) -> bool:
+        with get_db() as db:
+            try:
+                db.query(UserFile).delete()
+                db.commit()
+                return True
+            except Exception:
+                return False
+
+
+UserFiles = UserFilesTable()

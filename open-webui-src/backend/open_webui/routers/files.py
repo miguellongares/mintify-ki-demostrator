@@ -28,6 +28,7 @@ from open_webui.models.files import (
     FileModel,
     FileModelResponse,
     Files,
+    UserFiles,
 )
 from open_webui.models.knowledge import Knowledges
 
@@ -126,18 +127,21 @@ def upload_file(
         unsanitized_filename = file.filename
         filename = os.path.basename(unsanitized_filename)
 
-        # MINTIFY dedup: hash the raw bytes BEFORE storing. If this user already has a
-        # file with identical content, reuse it — no new disk file, no new DB row, no
-        # re-index (it's already extracted and in Qdrant). The returned id flows back
-        # unchanged, so KB-add appends it to file_ids and chat-drop scopes it to the
-        # chat; multiple KBs can therefore share one stored file.
+        # MINTIFY dedup: hash the raw bytes BEFORE storing. The `file` table is a pure
+        # content store — one row per unique document. If that content already exists
+        # (uploaded by ANYONE), reuse it: no new disk file, no new DB row, no re-index.
+        # We only record a per-user grant in `user_file` so this user can see/read it.
+        # The shared file.id flows back unchanged, so chat metadata, KB file_ids, and
+        # the rag-backend all keep pointing at the single shared copy.
         contents_for_hash = file.file.read()
         file.file.seek(0)  # rewind so Storage.upload_file reads from the start
         content_hash = hashlib.sha256(contents_for_hash).hexdigest()
 
-        existing = Files.get_file_by_content_hash(content_hash, user.id)
+        existing = Files.get_file_by_content_hash(content_hash)
         if existing:
             log.info(f"Dedup: reusing file {existing.id} for {filename}")
+            if not UserFiles.has_grant(user.id, existing.id):
+                UserFiles.insert_grant(user.id, existing.id, filename)
             return existing
 
         # replace filename with uuid
@@ -163,6 +167,9 @@ def upload_file(
                 }
             ),
         )
+        # MINTIFY: record this user's grant on the new content row.
+        if file_item:
+            UserFiles.insert_grant(user.id, id, name)
         if process:
             try:
                 if file.content_type in [
@@ -221,7 +228,8 @@ async def list_files(user=Depends(get_verified_user), content: bool = Query(True
     if user.role == "admin":
         files = Files.get_files()
     else:
-        files = Files.get_files_by_user_id(user.id)
+        # MINTIFY: a user sees the files they hold a grant for (content is shared).
+        files = Files.get_files_by_ids(UserFiles.get_file_ids_by_user_id(user.id))
 
     if not content:
         for file in files:
@@ -251,7 +259,8 @@ async def search_files(
     if user.role == "admin":
         files = Files.get_files()
     else:
-        files = Files.get_files_by_user_id(user.id)
+        # MINTIFY: a user sees the files they hold a grant for (content is shared).
+        files = Files.get_files_by_ids(UserFiles.get_file_ids_by_user_id(user.id))
 
     # Get matching files
     matching_files = [
@@ -280,6 +289,7 @@ async def search_files(
 async def delete_all_files(user=Depends(get_admin_user)):
     result = Files.delete_all_files()
     if result:
+        UserFiles.delete_all_grants()  # MINTIFY: clear grants too
         try:
             Storage.delete_all_files()
         except Exception as e:
@@ -315,6 +325,7 @@ async def get_file_by_id(id: str, user=Depends(get_verified_user)):
     if (
         file.user_id == user.id
         or user.role == "admin"
+        or UserFiles.has_grant(user.id, id)
         or has_access_to_file(id, "read", user)
     ):
         return file
@@ -343,6 +354,7 @@ async def get_file_data_content_by_id(id: str, user=Depends(get_verified_user)):
     if (
         file.user_id == user.id
         or user.role == "admin"
+        or UserFiles.has_grant(user.id, id)
         or has_access_to_file(id, "read", user)
     ):
         return {"content": file.data.get("content", "")}
@@ -420,6 +432,7 @@ async def get_file_content_by_id(
     if (
         file.user_id == user.id
         or user.role == "admin"
+        or UserFiles.has_grant(user.id, id)
         or has_access_to_file(id, "read", user)
     ):
         try:
@@ -488,6 +501,7 @@ async def get_html_file_content_by_id(id: str, user=Depends(get_verified_user)):
     if (
         file.user_id == user.id
         or user.role == "admin"
+        or UserFiles.has_grant(user.id, id)
         or has_access_to_file(id, "read", user)
     ):
         try:
@@ -530,6 +544,7 @@ async def get_file_content_by_id(id: str, user=Depends(get_verified_user)):
     if (
         file.user_id == user.id
         or user.role == "admin"
+        or UserFiles.has_grant(user.id, id)
         or has_access_to_file(id, "read", user)
     ):
         file_path = file.path
@@ -592,29 +607,38 @@ async def delete_file_by_id(id: str, user=Depends(get_verified_user)):
     if (
         file.user_id == user.id
         or user.role == "admin"
+        or UserFiles.has_grant(user.id, id)
         or has_access_to_file(id, "write", user)
     ):
-        # We should add Chroma cleanup here
+        # MINTIFY: deleting a file just removes THIS user's grant. The shared content
+        # (row + disk + Qdrant points) is purged only once nothing references it — no
+        # remaining grants AND no knowledge base.
+        UserFiles.delete_grant(user.id, id)
 
-        result = Files.delete_file_by_id(id)
-        if result:
-            # MINTIFY: drop this file's vectors from the rag-backend's Qdrant too.
-            _notify_rag_backend("DELETE", id)
-            try:
-                Storage.delete_file(file.path)
-            except Exception as e:
-                log.exception(e)
-                log.error("Error deleting files")
+        if (
+            UserFiles.count_grants_for_file(id) == 0
+            and Knowledges.count_knowledge_bases_referencing_file(id) == 0
+        ):
+            result = Files.delete_file_by_id(id)
+            if result:
+                # Drop this file's vectors from the rag-backend's Qdrant too.
+                _notify_rag_backend("DELETE", id)
+                try:
+                    Storage.delete_file(file.path)
+                except Exception as e:
+                    log.exception(e)
+                    log.error("Error deleting files")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=ERROR_MESSAGES.DEFAULT("Error deleting files"),
+                    )
+            else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=ERROR_MESSAGES.DEFAULT("Error deleting files"),
+                    detail=ERROR_MESSAGES.DEFAULT("Error deleting file"),
                 )
-            return {"message": "File deleted successfully"}
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ERROR_MESSAGES.DEFAULT("Error deleting file"),
-            )
+
+        return {"message": "File deleted successfully"}
     else:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
