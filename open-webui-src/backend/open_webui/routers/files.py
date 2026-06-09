@@ -1,3 +1,4 @@
+import hashlib
 import json as _json
 import logging
 import os
@@ -125,6 +126,20 @@ def upload_file(
         unsanitized_filename = file.filename
         filename = os.path.basename(unsanitized_filename)
 
+        # MINTIFY dedup: hash the raw bytes BEFORE storing. If this user already has a
+        # file with identical content, reuse it — no new disk file, no new DB row, no
+        # re-index (it's already extracted and in Qdrant). The returned id flows back
+        # unchanged, so KB-add appends it to file_ids and chat-drop scopes it to the
+        # chat; multiple KBs can therefore share one stored file.
+        contents_for_hash = file.file.read()
+        file.file.seek(0)  # rewind so Storage.upload_file reads from the start
+        content_hash = hashlib.sha256(contents_for_hash).hexdigest()
+
+        existing = Files.get_file_by_content_hash(content_hash, user.id)
+        if existing:
+            log.info(f"Dedup: reusing file {existing.id} for {filename}")
+            return existing
+
         # replace filename with uuid
         id = str(uuid.uuid4())
         name = filename
@@ -142,6 +157,7 @@ def upload_file(
                         "name": name,
                         "content_type": file.content_type,
                         "size": len(contents),
+                        "content_hash": content_hash,
                         "data": file_metadata,
                     },
                 }

@@ -179,6 +179,20 @@ class FilesTable:
                 for file in db.query(File).filter_by(user_id=user_id).all()
             ]
 
+    def get_file_by_content_hash(
+        self, content_hash: str, user_id: str
+    ) -> Optional[FileModel]:
+        # MINTIFY dedup: find an already-stored file with the same raw-bytes hash for
+        # this user. The dedup hash lives in meta["content_hash"] (file.hash is the
+        # extracted-text hash, overwritten by process_file). The file table holds one
+        # row per unique document, so a scoped Python scan is simplest and avoids
+        # SQLite-fragile JSON-column filters.
+        with get_db() as db:
+            for file in db.query(File).filter_by(user_id=user_id).all():
+                if (file.meta or {}).get("content_hash") == content_hash:
+                    return FileModel.model_validate(file)
+            return None
+
     def update_file_hash_by_id(self, id: str, hash: str) -> Optional[FileModel]:
         with get_db() as db:
             try:

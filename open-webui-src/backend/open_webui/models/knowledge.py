@@ -154,6 +154,20 @@ class KnowledgeTable:
             or has_access(user_id, permission, knowledge_base.access_control)
         ]
 
+    def count_knowledge_bases_referencing_file(
+        self, file_id: str, exclude_id: Optional[str] = None
+    ) -> int:
+        # MINTIFY: files can be shared across KBs (dedup reuses one row). Used to
+        # decide whether a file row is safe to hard-delete: only when no OTHER KB
+        # still lists it in data["file_ids"].
+        count = 0
+        for kb in self.get_knowledge_bases():
+            if exclude_id and kb.id == exclude_id:
+                continue
+            if file_id in ((kb.data or {}).get("file_ids") or []):
+                count += 1
+        return count
+
     def get_knowledge_by_id(self, id: str) -> Optional[KnowledgeModel]:
         try:
             with get_db() as db:
