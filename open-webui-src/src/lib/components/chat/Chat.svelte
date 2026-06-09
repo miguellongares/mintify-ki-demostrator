@@ -555,7 +555,8 @@
 
 			// Upload file to server
 			console.log('Uploading file to server...');
-			const uploadedFile = await uploadFile(localStorage.token, file);
+			// MINTIFY: chat drop → private, chat-scoped (not added to the file library).
+			const uploadedFile = await uploadFile(localStorage.token, file, true);
 
 			if (!uploadedFile) {
 				throw new Error('Server returned null response for file upload');

@@ -8,6 +8,10 @@ POST   /api/sync          — backfill: (re)index every file OWUI knows about.
                             Use once after migration or to repair drift.
 DELETE /api/index/{id}    — remove all Qdrant points for a file (OWUI calls this
                             on delete; fills the gap OWUI's own cleanup leaves).
+POST   /api/reconcile     — drop Qdrant points whose owui_file_id no longer exists
+                            in OWUI (safety net against drift).
+POST   /api/reset-collection — wipe + recreate the collection and clear the indexer
+                            cache. Used by scripts/reset_rag.sh for a clean state.
 """
 
 from fastapi import APIRouter, Depends
@@ -40,3 +44,15 @@ def sync_all(indexer: Indexer = Depends(get_indexer)):
 def delete_file(file_id: str, indexer: Indexer = Depends(get_indexer)):
     indexer.delete_file_id(file_id)
     return {"file_id": file_id, "deleted": True}
+
+
+@router.post("/reconcile")
+def reconcile(indexer: Indexer = Depends(get_indexer)):
+    print("[RAG] /reconcile — purging Qdrant points for files gone from OWUI", flush=True)
+    return indexer.reconcile()
+
+
+@router.post("/reset-collection")
+def reset_collection(indexer: Indexer = Depends(get_indexer)):
+    print("[RAG] /reset-collection — wiping the collection", flush=True)
+    return indexer.reset_collection()

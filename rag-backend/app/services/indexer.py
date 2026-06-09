@@ -98,6 +98,39 @@ class Indexer:
         self._indexed.pop(file_id, None)
         print(f"[RAG] Deleted Qdrant points for owui_file_id={file_id}", flush=True)
 
+    def reconcile(self) -> dict:
+        """Drop Qdrant points whose owui_file_id no longer exists in OWUI — a safety
+        net against drift (e.g. a file row removed without firing the delete webhook)."""
+        live = {f["id"] for f in self._owui.list_files()}
+        qdrant_ids = self._distinct_owui_ids()
+        orphans = qdrant_ids - live
+        for fid in orphans:
+            self._delete_points(fid)
+            self._indexed.pop(fid, None)
+        print(
+            f"[RAG] reconcile: {len(orphans)} orphan files purged "
+            f"({len(qdrant_ids)} in Qdrant, {len(live)} live).",
+            flush=True,
+        )
+        return {
+            "qdrant_files": len(qdrant_ids),
+            "live_files": len(live),
+            "orphans_deleted": sorted(orphans),
+        }
+
+    def reset_collection(self) -> dict:
+        """Wipe and recreate the collection, then clear the in-memory cache. Routing a
+        full Qdrant wipe through here keeps the _indexed cache from going stale (a
+        direct Qdrant delete would leave it thinking files are still indexed)."""
+        try:
+            self._qdrant.delete_collection(self._settings.collection_name)
+        except Exception as e:
+            print(f"[RAG] reset_collection delete failed: {e}", flush=True)
+        self._ensure_collection()
+        self._indexed.clear()
+        print(f"[RAG] reset_collection: '{self._settings.collection_name}' wiped.", flush=True)
+        return {"reset": True, "collection": self._settings.collection_name}
+
     # ------------------------------------------------------------------ internal
 
     def _index_record(self, record: dict) -> int:
@@ -155,6 +188,27 @@ class Indexer:
             )
         except Exception as e:
             print(f"[RAG] delete points failed for {file_id}: {e}", flush=True)
+
+    def _distinct_owui_ids(self) -> set[str]:
+        """Scroll the whole collection collecting distinct owui_file_id payloads.
+        Paginated (unlike _prefetch_indexed) so it stays correct for large collections."""
+        ids: set[str] = set()
+        offset = None
+        while True:
+            points, offset = self._qdrant.scroll(
+                collection_name=self._settings.collection_name,
+                with_payload=["owui_file_id"],
+                with_vectors=False,
+                limit=1000,
+                offset=offset,
+            )
+            for p in points:
+                fid = (p.payload or {}).get("owui_file_id")
+                if fid:
+                    ids.add(fid)
+            if offset is None:
+                break
+        return ids
 
     def _ensure_collection(self):
         """Create the Qdrant collection if it doesn't already exist."""

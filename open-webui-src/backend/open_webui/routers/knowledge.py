@@ -9,7 +9,7 @@ from open_webui.models.knowledge import (
     KnowledgeResponse,
     KnowledgeUserResponse,
 )
-from open_webui.models.files import Files, FileModel
+from open_webui.models.files import Files, FileModel, UserFiles
 from open_webui.retrieval.vector.connector import VECTOR_DB_CLIENT
 from open_webui.routers.retrieval import (
     process_file,
@@ -524,8 +524,23 @@ def remove_file_from_knowledge_by_id(
         log.debug(e)
         pass
 
-    # Delete file from database
-    Files.delete_file_by_id(form_data.file_id)
+    # MINTIFY: files are shared (upload dedup reuses one row; user_file grants record
+    # who holds them). Only hard-delete the underlying content when no OTHER KB and no
+    # user grant still references it; otherwise just drop it from this KB's file_ids.
+    if (
+        Knowledges.count_knowledge_bases_referencing_file(form_data.file_id, exclude_id=id) == 0
+        and UserFiles.count_grants_for_file(form_data.file_id) == 0
+    ):
+        from open_webui.routers.files import _notify_rag_backend
+
+        file = Files.get_file_by_id(form_data.file_id)
+        Files.delete_file_by_id(form_data.file_id)
+        if file and file.path:
+            try:
+                Storage.delete_file(file.path)
+            except Exception as e:
+                log.warning(f"disk delete failed for {form_data.file_id}: {e}")
+        _notify_rag_backend("DELETE", form_data.file_id)
 
     if knowledge:
         data = knowledge.data or {}
@@ -620,6 +635,26 @@ async def delete_knowledge_by_id(id: str, user=Depends(get_verified_user)):
     except Exception as e:
         log.debug(e)
         pass
+
+    # MINTIFY: cascade-delete this KB's underlying files (row + disk + Qdrant) so they
+    # aren't orphaned. Skip any file still referenced by another KB (shared via dedup).
+    from open_webui.routers.files import _notify_rag_backend
+
+    for fid in (knowledge.data or {}).get("file_ids", []) or []:
+        if (
+            Knowledges.count_knowledge_bases_referencing_file(fid, exclude_id=id) > 0
+            or UserFiles.count_grants_for_file(fid) > 0
+        ):
+            continue
+        file = Files.get_file_by_id(fid)
+        Files.delete_file_by_id(fid)
+        if file and file.path:
+            try:
+                Storage.delete_file(file.path)
+            except Exception as e:
+                log.warning(f"disk delete failed for {fid}: {e}")
+        _notify_rag_backend("DELETE", fid)
+
     result = Knowledges.delete_knowledge_by_id(id=id)
     return result
 

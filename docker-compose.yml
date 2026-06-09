@@ -105,8 +105,12 @@ services:
       - AUDIO_TTS_OPENAI_API_KEY=mintify-pipeline-key
       - AUDIO_TTS_MODEL=qwen3-tts
       - AUDIO_TTS_VOICE=de-DE
+      - CONTENT_EXTRACTION_ENGINE=docling
+      - DOCLING_SERVER_URL=http://host.docker.internal:5001
     volumes:
       - ./data/open-webui:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:8080"
     restart: unless-stopped

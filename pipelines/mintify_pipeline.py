@@ -47,7 +47,7 @@ def _strip_injected_context(text: str) -> str:
     return cleaned.strip()
 
 
-def _extract_file_ids(body: dict, messages: list) -> list[str] | None:
+def _extract_file_ids(body: dict, messages: list) -> list[str]:
     """
     Pull the OWUI file IDs the user attached as Knowledge to the active model.
     OWUI stores them at body.metadata.model.info.meta.knowledge[*].files[*].id
@@ -56,23 +56,25 @@ def _extract_file_ids(body: dict, messages: list) -> list[str] | None:
     the knowledge entry. Direct per-message uploads can also appear at
     metadata.files.
 
-    Returns None  → can't tell, don't filter (be permissive).
-    Returns []    → model has no Knowledge attached AND no message uploads
-                    → caller treats as "no retrieval" (strict scoping).
+    Always returns a list (STRICT scoping): the model's attached Knowledge + any
+    files dropped in THIS chat. An empty [] means "nothing attached" → the backend
+    retrieves nothing and the model answers on its own. We never return None /
+    "search the whole index", because that leaked files dropped in one chat into
+    other chats when no KB was attached.
     """
-    #Understand the body structure in the pipeline: 
+    #Understand the body structure in the pipeline:
     # The body contains all the possible information:
-    # system prompt,query, old querys and answers, context, model, etc.. 
+    # system prompt,query, old querys and answers, context, model, etc..
     if not isinstance(body, dict):
-        print(f'The body is no dict, return None', flush=True)
-        return None
+        print(f'The body is no dict, return [] (no retrieval)', flush=True)
+        return []
     #Inside the body we get from OWUI, the meta is extracted:
-    #which contains information like: user_id, chat_id, tool_ids, etc... 
+    #which contains information like: user_id, chat_id, tool_ids, etc...
     #one of the information is the current selected model like KI-Experte
     meta = body.get("metadata")
     if not isinstance(meta, dict):
-        print(f'The body has no metadata, return None', flush=True)
-        return None
+        print(f'The body has no metadata, return [] (no retrieval)', flush=True)
+        return []
 
     ids: list[str] = []
     saw_knowledge_field = False
@@ -116,7 +118,8 @@ def _extract_file_ids(body: dict, messages: list) -> list[str] | None:
                         ids.append(str(sub["id"]))
 
     if not saw_knowledge_field:
-        return None
+        # No Knowledge field and no message uploads → nothing attached → no retrieval.
+        return []
     # Dedupe while preserving order.
     return list(dict.fromkeys(ids))
 
@@ -176,6 +179,15 @@ class Pipeline:
     def pipe(self, user_message: str, model_id: str, messages: list, body: dict) -> Generator:
         actual_model = model_id.removeprefix(f"{self.id}.").replace("__", "/")
 
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print(f'This is the entire body passed to the pipeline without filtering:\n\n {body}\n\n', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+        print('-----------------Raw body--------------------', flush=True)
+
+
 
         # Meta-tasks (title, tags, query gen) bypass RAG entirely.
         if _is_meta_task(user_message):
@@ -196,6 +208,14 @@ class Pipeline:
         owui_system = _strip_injected_context(owui_system)
         clean_msg = _clean_user_message(user_message)
         file_ids = _extract_file_ids(body, messages)
+
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print(f'This is the entire Clean body passed to the pipeline with filtering:\n\n {clean_msg}\n\n', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
+        print('-----------------Clean body--------------------', flush=True)
 
         # Drop OWUI's <source>-injected user turn from history too — keep only the
         # clean text. Same regex on every prior user message.
