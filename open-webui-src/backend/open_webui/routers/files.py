@@ -121,6 +121,7 @@ def upload_file(
     user=Depends(get_verified_user),
     file_metadata: dict = {},
     process: bool = Query(True),
+    chat: bool = Query(False),  # MINTIFY: true for chat drag-drop (private, chat-scoped)
 ):
     log.info(f"file.content_type: {file.content_type}")
     try:
@@ -137,11 +138,15 @@ def upload_file(
         file.file.seek(0)  # rewind so Storage.upload_file reads from the start
         content_hash = hashlib.sha256(contents_for_hash).hexdigest()
 
+        # A chat drop is private + chat-scoped (kept out of the library); a KB /
+        # workspace upload is a library file. Content is deduped either way.
+        kind = "chat" if chat else "library"
+
         existing = Files.get_file_by_content_hash(content_hash)
         if existing:
-            log.info(f"Dedup: reusing file {existing.id} for {filename}")
-            if not UserFiles.has_grant(user.id, existing.id):
-                UserFiles.insert_grant(user.id, existing.id, filename)
+            log.info(f"Dedup: reusing file {existing.id} for {filename} (kind={kind})")
+            if not UserFiles.has_grant(user.id, existing.id, kind):
+                UserFiles.insert_grant(user.id, existing.id, filename, {"kind": kind})
             return existing
 
         # replace filename with uuid
@@ -169,7 +174,7 @@ def upload_file(
         )
         # MINTIFY: record this user's grant on the new content row.
         if file_item:
-            UserFiles.insert_grant(user.id, id, name)
+            UserFiles.insert_grant(user.id, id, name, {"kind": kind})
         if process:
             try:
                 if file.content_type in [
@@ -228,8 +233,11 @@ async def list_files(user=Depends(get_verified_user), content: bool = Query(True
     if user.role == "admin":
         files = Files.get_files()
     else:
-        # MINTIFY: a user sees the files they hold a grant for (content is shared).
-        files = Files.get_files_by_ids(UserFiles.get_file_ids_by_user_id(user.id))
+        # MINTIFY: a user's library shows only library-kind grants. Chat drops are
+        # private + chat-scoped, so they're excluded here.
+        files = Files.get_files_by_ids(
+            UserFiles.get_library_file_ids_by_user_id(user.id)
+        )
 
     if not content:
         for file in files:
@@ -259,8 +267,11 @@ async def search_files(
     if user.role == "admin":
         files = Files.get_files()
     else:
-        # MINTIFY: a user sees the files they hold a grant for (content is shared).
-        files = Files.get_files_by_ids(UserFiles.get_file_ids_by_user_id(user.id))
+        # MINTIFY: a user's library shows only library-kind grants. Chat drops are
+        # private + chat-scoped, so they're excluded here.
+        files = Files.get_files_by_ids(
+            UserFiles.get_library_file_ids_by_user_id(user.id)
+        )
 
     # Get matching files
     matching_files = [

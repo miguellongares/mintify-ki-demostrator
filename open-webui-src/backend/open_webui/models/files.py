@@ -311,20 +311,35 @@ class UserFilesTable:
             )
             return UserFileModel.model_validate(grant) if grant else None
 
-    def has_grant(self, user_id: str, file_id: str) -> bool:
+    def has_grant(
+        self, user_id: str, file_id: str, kind: Optional[str] = None
+    ) -> bool:
+        # kind=None → any grant (used for read-access + ref-counting).
+        # kind="chat"/"library" → only that kind. A missing meta.kind counts as
+        # "library" so grants created before the kind tag stay library files.
         with get_db() as db:
-            return (
-                db.query(UserFile)
-                .filter_by(user_id=user_id, file_id=file_id)
-                .first()
-                is not None
-            )
+            for g in db.query(UserFile).filter_by(
+                user_id=user_id, file_id=file_id
+            ).all():
+                if kind is None or (g.meta or {}).get("kind", "library") == kind:
+                    return True
+            return False
 
     def get_file_ids_by_user_id(self, user_id: str) -> list[str]:
         with get_db() as db:
             return [
                 g.file_id
                 for g in db.query(UserFile).filter_by(user_id=user_id).all()
+            ]
+
+    def get_library_file_ids_by_user_id(self, user_id: str) -> list[str]:
+        # Only "library"-kind grants (KB / workspace uploads). Chat drops are
+        # excluded so they never surface in the file library or across chats.
+        with get_db() as db:
+            return [
+                g.file_id
+                for g in db.query(UserFile).filter_by(user_id=user_id).all()
+                if (g.meta or {}).get("kind", "library") == "library"
             ]
 
     def count_grants_for_file(

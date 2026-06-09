@@ -1,11 +1,14 @@
 import { WEBUI_API_BASE_URL } from '$lib/constants';
 
-export const uploadFile = async (token: string, file: File) => {
+export const uploadFile = async (token: string, file: File, chat: boolean = false) => {
 	const data = new FormData();
 	data.append('file', file);
 	let error = null;
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/files/`, {
+	// MINTIFY: chat=true marks a chat drag-drop → private, chat-scoped (kept out of
+	// the file library). Knowledge-base / workspace uploads leave it false.
+	const query = chat ? '?chat=true' : '';
+	const res = await fetch(`${WEBUI_API_BASE_URL}/files/${query}`, {
 		method: 'POST',
 		headers: {
 			Accept: 'application/json',

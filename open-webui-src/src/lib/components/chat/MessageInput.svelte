@@ -191,7 +191,8 @@
 
 		try {
 			// During the file upload, file content is automatically extracted.
-			const uploadedFile = await uploadFile(localStorage.token, file);
+			// MINTIFY: chat drop → private, chat-scoped (not added to the file library).
+			const uploadedFile = await uploadFile(localStorage.token, file, true);
 
 			if (uploadedFile) {
 				console.log('File upload completed:', {

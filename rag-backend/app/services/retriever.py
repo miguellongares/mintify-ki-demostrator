@@ -43,18 +43,19 @@ class Retriever:
             print("[RAG] No documents in Qdrant — returning fallback.")
             return "Noch keine Dokumente im Wissensspeicher.", []
 
-        # Scope retrieval to the OWUI files/knowledge the user has attached to the
-        # model. Empty list → no Knowledge attached → retrieve nothing, so the LLM
-        # answers from its own knowledge instead of leaking the whole index.
-        query_filter = None
-        if file_ids is not None:
-            if not file_ids:
-                print("[RAG] No OWUI knowledge attached — skipping retrieval.")
-                return "", []
-            query_filter = Filter(
-                must=[FieldCondition(key="owui_file_id", match=MatchAny(any=file_ids))]
-            )
-            print(f"[RAG] Filtering Qdrant by owui_file_id ∈ {file_ids}")
+        # STRICT scoping: retrieve ONLY from knowledge the user explicitly attached —
+        # the model's knowledge base AND files dropped in THIS chat (their ids arrive
+        # in file_ids). No attachment (None OR empty) → retrieve nothing, so the model
+        # answers on its own. This prevents a file dropped in one chat from surfacing
+        # in another: the old `None → search the whole index` path leaked across chats
+        # whenever no KB was attached.
+        if not file_ids:
+            print("[RAG] No knowledge attached — skipping retrieval (model-only).")
+            return "", []
+        query_filter = Filter(
+            must=[FieldCondition(key="owui_file_id", match=MatchAny(any=file_ids))]
+        )
+        print(f"[RAG] Filtering Qdrant by owui_file_id ∈ {file_ids}")
 
         try:
             result = self._qdrant.query_points(
