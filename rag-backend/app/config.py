@@ -20,6 +20,20 @@ class Settings(BaseSettings):
     # any user's file content. Empty → indexing is effectively disabled.
     owui_api_key: str = ""
 
+    # --- Web search (backend-owned: SearXNG search + trafilatura extraction) ---
+    # The pipeline forwards web_search=True + the query when the user enables 🌐.
+    # We query SearXNG, fetch the top-N pages, and extract clean article text.
+    searxng_url: str = "http://searxng:8080"
+    web_search_results: int = 4          # top-N SearXNG hits to fetch
+    web_fetch_timeout: float = 8.0       # seconds per SearXNG query / page fetch
+    web_doc_char_cap: int = 4000         # max chars kept per page
+    web_total_char_cap: int = 16000      # max chars across all pages
+    web_min_doc_chars: int = 120         # below this → fall back to SearXNG snippet
+    web_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    )
+
     @property
     def vllm_urls(self) -> list[str]:
         return [u.strip() for u in self.vllm_base_urls.split(",") if u.strip()]

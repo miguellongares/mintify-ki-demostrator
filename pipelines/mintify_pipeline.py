@@ -124,6 +124,18 @@ def _extract_file_ids(body: dict, messages: list) -> list[str]:
     return list(dict.fromkeys(ids))
 
 
+def _web_search_enabled(body: dict) -> bool:
+    """True when the user toggled 🌐 web search for this turn.
+
+    OWUI signals it at body.metadata.features.web_search. OWUI's own web fetch is
+    disabled (MINTIFY_BACKEND_WEB_SEARCH=true in the open-webui container), so this
+    flag is just the trigger: the rag-backend does the actual search + extraction.
+    """
+    meta = body.get("metadata") if isinstance(body, dict) else None
+    feats = meta.get("features") if isinstance(meta, dict) else None
+    return bool(feats.get("web_search")) if isinstance(feats, dict) else False
+
+
 class Pipeline:
 
     class Valves(BaseModel):
@@ -208,6 +220,8 @@ class Pipeline:
         owui_system = _strip_injected_context(owui_system)
         clean_msg = _clean_user_message(user_message)
         file_ids = _extract_file_ids(body, messages)
+        # 🌐 toggle → the rag-backend runs SearXNG + trafilatura over clean_msg.
+        web_search = _web_search_enabled(body)
 
         print('-----------------Clean body--------------------', flush=True)
         print('-----------------Clean body--------------------', flush=True)
@@ -240,10 +254,12 @@ class Pipeline:
             "base_system_prompt": self.valves.SYSTEM_PROMPT,
             "top_k": self.valves.TOP_K,
             "file_ids": file_ids,
+            "web_search": web_search,
         }
 
         print(
             f"[MINTIFY] pipe() | model={actual_model!r} | file_ids={file_ids} | "
+            f"web_search={web_search} | "
             f"owui_system={'set' if owui_system else 'empty'} | msg={clean_msg!r}",
             flush=True,
         )

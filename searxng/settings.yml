@@ -1,0 +1,29 @@
+# SearXNG settings for MINTIFY's web search.
+#
+# OWUI calls http://searxng:8080/search?q=<query>&format=json and parses the JSON.
+# Two non-default things are REQUIRED for that to work:
+#   1) `search.formats` must include `json` (default builds only return HTML).
+#   2) the request limiter / bot detection must be OFF, otherwise SearXNG blocks
+#      the server-to-server calls from OWUI as if they were bots.
+#
+# `use_default_settings: true` keeps SearXNG's full default engine list (Google,
+# Bing, DuckDuckGo, Wikipedia, …); SearXNG aggregates + rotates across them, so a
+# single engine rate-limiting (the DuckDuckGo problem) no longer kills the search.
+use_default_settings: true
+
+server:
+  # Generated with `openssl rand -hex 32`. Change it for your own deployment.
+  secret_key: "9ee3a168ac858ffe06598d1ba623db2facdd470c7140f31801af4bdb1453a334"
+  limiter: false          # internal-only service → no per-IP rate limiting
+  image_proxy: false
+
+search:
+  safe_search: 0
+  # `json` is what OWUI needs; `html` is kept so the SearXNG UI still works if
+  # you expose a debug port.
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
