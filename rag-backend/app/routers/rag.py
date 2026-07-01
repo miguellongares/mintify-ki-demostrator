@@ -12,15 +12,46 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.dependencies import get_embedder, get_llm_client, get_retriever
+from app.dependencies import (
+    get_embedder,
+    get_llm_client,
+    get_retriever,
+    get_web_searcher,
+)
 from app.services.embedder import Embedder
 from app.services.llm_client import LLMClient
 from app.services.retriever import Retriever
+from app.services.web_search import WebResult, WebSearcher
 
 router = APIRouter()
 
 
 DEFAULT_CONTEXT_BLOCK = "\n\n[KONTEXT]\n{context}\n[/KONTEXT]\n"
+
+# Fresh web-search results (SearXNG + trafilatura, done in the rag-backend),
+# injected when the user enabled 🌐. Appended AFTER {context} formatting so web
+# text containing literal { } can never break str.format().
+WEB_CONTEXT_BLOCK = (
+    "\n\n[WEB-RECHERCHE]\n"
+    "Die folgenden Auszüge stammen aus einer aktuellen Internet-Suche "
+    "(Stand: heute). Sie sind aktueller als dein Trainingswissen — stütze deine "
+    "Antwort darauf und zitiere die genutzten Quellen als [Quelle N].\n\n"
+    "{web}\n[/WEB-RECHERCHE]\n"
+)
+
+
+def _format_web_context(results: list[WebResult]) -> str:
+    """Numbered source blocks the model can cite as [Quelle N]."""
+    return "\n\n".join(
+        f"[Quelle {i}] {r.title}\nURL: {r.url}\n{r.text}"
+        for i, r in enumerate(results, 1)
+    )
+
+
+def _quellen_footer(results: list[WebResult]) -> str:
+    """Rendered after the answer so the user always sees the sources used."""
+    lines = "\n".join(f"{i}. {r.url}" for i, r in enumerate(results, 1))
+    return f"\n\n---\n**Quellen ({len(results)} Webseiten durchsucht):**\n{lines}"
 
 
 class PipeRequest(BaseModel):
@@ -37,6 +68,9 @@ class PipeRequest(BaseModel):
     # OWUI file IDs the user has attached as Knowledge to this chat.
     # None = no filter (legacy behaviour). Empty list = explicit "no knowledge attached".
     file_ids: list[str] | None = None
+    # True when the user enabled 🌐 for this turn → the backend runs SearXNG +
+    # trafilatura over user_message and injects the results.
+    web_search: bool = False
 
 
 class PassthroughRequest(BaseModel):
@@ -52,12 +86,26 @@ async def pipe(
     embedder: Embedder = Depends(get_embedder),
     retriever: Retriever = Depends(get_retriever),
     llm: LLMClient = Depends(get_llm_client),
+    web_searcher: WebSearcher = Depends(get_web_searcher),
 ) -> StreamingResponse:
     print(f"\n{'='*60}")
     print(f"[RAG] pipe() called")
     print(f"[RAG] user_message: {repr(req.user_message[:200])}")
     print(f"[RAG] model_id: {req.model_id}")
-    print(f"[RAG] file_ids: {req.file_ids}")
+    print(f"[RAG] file_ids: {req.file_ids} | web_search: {req.web_search}")
+
+    # Web search (SearXNG + trafilatura) — only when the user enabled 🌐.
+    web_results: list[WebResult] = []
+    if req.web_search:
+        web_results = web_searcher.search(req.user_message)
+        print(f"[RAG] web_search: {len(web_results)} usable sources")
+        print(f"\n{'#'*70}\n[RAG] RAW WEB CONTENT RETRIEVED FROM THE INTERNET\n{'#'*70}")
+        for i, r in enumerate(web_results, 1):
+            print(f"\n----- [Quelle {i}] {len(r.text)} chars -----")
+            print(f"TITLE: {r.title}")
+            print(f"URL  : {r.url}")
+            print(f"TEXT :\n{r.text}")
+        print(f"\n{'#'*70}\n", flush=True)
 
     # Indexing is no longer triggered here — OWUI pushes new/updated files to
     # POST /api/index as they're uploaded (see routers/index.py).
@@ -81,6 +129,14 @@ async def pipe(
             r"\n*\[KONTEXT\]\s*\{context\}\s*\[/KONTEXT\]\n*", "\n", chosen
         ).replace("{context}", "").strip()
 
+    # Append fresh web-search results, if any. Done after the {context} .format()
+    # above; .format() here only fills the {web} placeholder, so braces inside the
+    # web text are inserted literally and never re-scanned.
+    if web_results:
+        web_ctx = _format_web_context(web_results)
+        print(f"[RAG] web_search: {len(web_ctx)} chars injected as [WEB-RECHERCHE]")
+        enriched_system = enriched_system.rstrip() + WEB_CONTEXT_BLOCK.format(web=web_ctx)
+
     enriched = [{"role": "system", "content": enriched_system}]
     enriched += [m for m in req.messages if m.get("role") != "system"]
 
@@ -89,6 +145,9 @@ async def pipe(
 
     def token_generator():
         yield from llm.stream(enriched, req.model_id, req.temperature)
+        # Always show the user which pages were used (the model may or may not cite).
+        if web_results:
+            yield _quellen_footer(web_results)
 
     return StreamingResponse(token_generator(), media_type="text/plain; charset=utf-8")
 

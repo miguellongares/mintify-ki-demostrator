@@ -6,6 +6,7 @@ from app.services.llm_client import LLMClient
 from app.services.owui_client import OWUIClient
 from app.services.retriever import Retriever
 from app.services.tts_client import Qwen3TTSClient, TTSClient
+from app.services.web_search import WebSearcher
 
 _embedder: Embedder | None = None
 _retriever: Retriever | None = None
@@ -14,11 +15,12 @@ _owui_client: OWUIClient | None = None
 _llm_client: LLMClient | None = None
 _judge_client: JudgeClient | None = None
 _tts_client: TTSClient | None = None
+_web_searcher: WebSearcher | None = None
 
 #
 def init_singletons(qdrant_client):
     global _embedder, _retriever, _indexer, _llm_client, _judge_client, _tts_client
-    global _owui_client
+    global _owui_client, _web_searcher
 
     _embedder = Embedder(settings.embedding_model)
     _retriever = Retriever(qdrant_client, settings.collection_name)
@@ -33,6 +35,17 @@ def init_singletons(qdrant_client):
     _indexer.startup()
 
     _judge_client = JudgeClient(settings.judge_vllm_url)
+
+    _web_searcher = WebSearcher(
+        searxng_url=settings.searxng_url,
+        user_agent=settings.web_user_agent,
+        num_results=settings.web_search_results,
+        fetch_timeout=settings.web_fetch_timeout,
+        per_doc_chars=settings.web_doc_char_cap,
+        total_chars=settings.web_total_char_cap,
+        min_doc_chars=settings.web_min_doc_chars,
+    )
+    print(f"[RAG] WebSearcher → {settings.searxng_url}")
 
     if settings.tts_url:
         _tts_client = Qwen3TTSClient(settings.tts_url)
@@ -67,3 +80,7 @@ def get_judge_client() -> JudgeClient:
 
 def get_tts_client() -> TTSClient | None:
     return _tts_client
+
+
+def get_web_searcher() -> WebSearcher:
+    return _web_searcher

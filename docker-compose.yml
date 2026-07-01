@@ -12,6 +12,22 @@ services:
       - "6334:6334"   # gRPC
     restart: unless-stopped
 
+  # Self-hosted metasearch engine for OWUI's web search. Replaces DuckDuckGo,
+  # whose free scraping endpoint rate-limits server IPs (202 Ratelimit). SearXNG
+  # aggregates many engines and is reachable in-network at http://searxng:8080.
+  # Config (JSON output + limiter off) lives in ./searxng/settings.yml.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: mintify-searxng
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080/
+    # Uncomment to reach the SearXNG UI from the host for debugging:
+    # ports:
+    #   - "8081:8080"
+    restart: unless-stopped
+
   mintify-rag-service:
     build:
       context: ./rag-backend
@@ -19,6 +35,8 @@ services:
     container_name: mintify-rag-service
     depends_on:
       qdrant:
+        condition: service_started
+      searxng:
         condition: service_started
     environment:
       - PYTHONUNBUFFERED=1
@@ -31,6 +49,9 @@ services:
       # Create an admin API key in OWUI (Settings → Account → API Keys) and set
       # it here (e.g. via .env) so the indexer can read file content.
       - OWUI_API_KEY=${OWUI_API_KEY:-}
+      # Backend-owned web search: the rag-backend queries SearXNG and extracts
+      # page content with trafilatura when the user enables 🌐 (see web_search.py).
+      - SEARXNG_URL=http://searxng:8080
     volumes:
       # Document text now comes from OWUI's API (by file id), not from disk —
       # no uploads mount needed.
@@ -79,6 +100,7 @@ services:
     depends_on:
       - pipelines
       - qdrant
+      - searxng
     environment:
       - OLLAMA_BASE_URL=                        # disabled — all chat goes through pipeline
       - OPENAI_API_BASE_URL=http://pipelines:9099
@@ -99,6 +121,15 @@ services:
       # On upload / content-update / delete, OWUI notifies the rag-backend to
       # (re)index or drop the file's vectors in Qdrant (see routers/files.py).
       - RAG_INGEST_WEBHOOK_URL=http://mintify-rag-service:8080/api/index
+      # --- Web search (backend-owned) ---
+      # ENABLE_WEB_SEARCH keeps the 🌐 toggle visible and lets the web_search flag
+      # flow to the pipeline (PersistentConfig — also enable it in Admin → Settings
+      # → Web Search on an existing DB, since the DB value wins there).
+      - ENABLE_WEB_SEARCH=true
+      # MINTIFY: skip OWUI's OWN fetch+inject (it returns boilerplate-heavy page
+      # dumps and would double-fetch). The rag-backend does SearXNG + trafilatura
+      # instead. Read directly by utils/middleware.py (plain env var, not config).
+      - MINTIFY_BACKEND_WEB_SEARCH=true
       # TTS: Qwen3-TTS via rag-backend proxy → vLLM-Omni on RunPod (tunnel port 8006)
       - AUDIO_TTS_ENGINE=openai
       - AUDIO_TTS_OPENAI_API_BASE_URL=http://mintify-rag-service:8080/api

@@ -33,7 +33,7 @@ per-upload duplication behaviour where every upload created a new disk file, a n
 
 ## The problem this solves
 
-`upload_file()` used to mint a fresh UUID and write the bytes to disk + a new
+`upload_file()` used to mint a fresh UUID (Universally Unique Identifier) and write the bytes to disk + a new
 `file` row on **every** upload, with no pre-check. Re-uploading the same PDF — or
 uploading it from a second account, or into a knowledge base — produced a full
 duplicate each time (disk + `webui.db` row + duplicate Qdrant vectors). There was

@@ -792,7 +792,16 @@ async def process_chat_payload(request, form_data, user, metadata, model):
 
     features = form_data.pop("features", None)
     if features:
-        if "web_search" in features and features["web_search"]:
+        # MINTIFY: web search is handled by the rag-backend (SearXNG + trafilatura),
+        # not OWUI. We keep ENABLE_WEB_SEARCH on so the 🌐 toggle stays visible and
+        # the web_search flag still flows to the pipeline via metadata.features, but
+        # we skip OWUI's own fetch+inject here to avoid fetching every page twice.
+        # Delete this guard (or unset the env var) to restore OWUI-native web search.
+        if (
+            "web_search" in features
+            and features["web_search"]
+            and os.environ.get("MINTIFY_BACKEND_WEB_SEARCH", "false").lower() != "true"
+        ):
             form_data = await chat_web_search_handler(
                 request, form_data, extra_params, user
             )
