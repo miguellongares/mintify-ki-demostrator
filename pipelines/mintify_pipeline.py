@@ -66,14 +66,12 @@ def _extract_file_ids(body: dict, messages: list) -> list[str]:
     # The body contains all the possible information:
     # system prompt,query, old querys and answers, context, model, etc..
     if not isinstance(body, dict):
-        print(f'The body is no dict, return [] (no retrieval)', flush=True)
         return []
     #Inside the body we get from OWUI, the meta is extracted:
     #which contains information like: user_id, chat_id, tool_ids, etc...
     #one of the information is the current selected model like KI-Experte
     meta = body.get("metadata")
     if not isinstance(meta, dict):
-        print(f'The body has no metadata, return [] (no retrieval)', flush=True)
         return []
 
     ids: list[str] = []
@@ -91,22 +89,14 @@ def _extract_file_ids(body: dict, messages: list) -> list[str]:
                     if not isinstance(k, dict):
                         continue
                     if k.get("type") == "file" and k.get("id"):
-                        print(f'Files directly found single:', flush=True)
-                        print(f'Name of the file localized:\n{k["name"]}\n', flush=True)
-                        print(f'And the id passed for that pfd:\n{k["id"]}\n', flush=True)
                         ids.append(str(k["id"]))
                     for sub in k.get("files") or []:
-                        print(f'======Files found in {k["name"]}=======:\n', flush=True)
                         if isinstance(sub, dict) and sub.get("id"):
-                            name_of_the_file = sub.get('meta')
-                            print(f'Name of the file localized:\n{name_of_the_file["name"]}', flush=True)
-                            print(f'And the id passed for that pfd:\n{sub["id"]}\n', flush=True)
                             ids.append(str(sub["id"]))
 
     # 2) Per-message file uploads (drag-and-drop into the chat input).
     # It is important to understand how the drag-and-drop files are read!!
     msg_files = meta.get("files")
-    print(f'msg_files:\n{msg_files}')
     if isinstance(msg_files, list):
         saw_knowledge_field = True
         for f in msg_files:
@@ -136,6 +126,30 @@ def _web_search_enabled(body: dict) -> bool:
     return bool(feats.get("web_search")) if isinstance(feats, dict) else False
 
 
+def _log_payload(path: str, payload: dict) -> None:
+    """Print the outgoing payload in a compact, readable way before _stream().
+
+    A deep copy is logged with base64 image data URIs shortened to
+    'data:image/...;base64,<NNN bytes>' so image attachments are visible in the
+    log without flooding it with megabytes of base64.
+    """
+    def _shorten(value):
+        if isinstance(value, dict):
+            return {k: _shorten(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_shorten(v) for v in value]
+        if isinstance(value, str) and value.startswith("data:") and ";base64," in value:
+            head, b64 = value.split(";base64,", 1)
+            return f"{head};base64,<{len(b64)} chars>"
+        return value
+
+    pretty = json.dumps(_shorten(payload), indent=2, ensure_ascii=False)
+    print(
+        f"\n{'='*60}\n[MINTIFY] → POST {path}\n{'='*60}\n{pretty}\n{'='*60}\n",
+        flush=True,
+    )
+
+
 class Pipeline:
 
     class Valves(BaseModel):
@@ -160,7 +174,6 @@ class Pipeline:
         self.name = "MINTIFY"
         self.type = "manifold"
         self.valves = self.Valves(**self._load_valves())
-        self._body_logged = False
 
     def pipelines(self) -> list:
         try:
@@ -191,24 +204,14 @@ class Pipeline:
     def pipe(self, user_message: str, model_id: str, messages: list, body: dict) -> Generator:
         actual_model = model_id.removeprefix(f"{self.id}.").replace("__", "/")
 
-        print('-----------------Raw body--------------------', flush=True)
-        print('-----------------Raw body--------------------', flush=True)
-        print('-----------------Raw body--------------------', flush=True)
-        print(f'This is the entire body passed to the pipeline without filtering:\n\n {body}\n\n', flush=True)
-        print('-----------------Raw body--------------------', flush=True)
-        print('-----------------Raw body--------------------', flush=True)
-        print('-----------------Raw body--------------------', flush=True)
-
-
-
         # Meta-tasks (title, tags, query gen) bypass RAG entirely.
         if _is_meta_task(user_message):
-            print(f"[MINTIFY] meta-task → /api/passthrough | model={actual_model!r}", flush=True)
             payload = {
                 "model_id": actual_model,
                 "messages": messages,
                 "temperature": body.get("temperature", 0.7),
             }
+            _log_payload("/api/passthrough", payload)
             yield from self._stream("/api/passthrough", payload)
             return
 
@@ -223,14 +226,6 @@ class Pipeline:
         # 🌐 toggle → the rag-backend runs SearXNG + trafilatura over clean_msg.
         web_search = _web_search_enabled(body)
 
-        print('-----------------Clean body--------------------', flush=True)
-        print('-----------------Clean body--------------------', flush=True)
-        print('-----------------Clean body--------------------', flush=True)
-        print(f'This is the entire Clean body passed to the pipeline with filtering:\n\n {clean_msg}\n\n', flush=True)
-        print('-----------------Clean body--------------------', flush=True)
-        print('-----------------Clean body--------------------', flush=True)
-        print('-----------------Clean body--------------------', flush=True)
-
         # Drop OWUI's <source>-injected user turn from history too — keep only the
         # clean text. Same regex on every prior user message.
         clean_messages = []
@@ -239,10 +234,27 @@ class Pipeline:
                 clean_messages.append({**m, "content": _clean_user_message(m["content"])})
             else:
                 clean_messages.append(m)
-        # Ensure the last user message reflects the cleaned text.
+        # Ensure the last user message reflects the cleaned text — WITHOUT
+        # destroying multimodal content. When the user attaches an image, OWUI
+        # sends content as a list of parts, e.g.
+        #   [{"type": "text", "text": "..."}, {"type": "image_url", ...}].
+        # In that case only the text part is rewritten; the image_url part(s)
+        # are preserved so vLLM still receives the image. A plain-string content
+        # is replaced directly with the cleaned question.
         for m in reversed(clean_messages):
             if m.get("role") == "user":
-                m["content"] = clean_msg
+                content = m.get("content")
+                if isinstance(content, list):
+                    text_replaced = False
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            part["text"] = clean_msg
+                            text_replaced = True
+                            break
+                    if not text_replaced:
+                        content.insert(0, {"type": "text", "text": clean_msg})
+                else:
+                    m["content"] = clean_msg
                 break
 
         payload = {
@@ -257,12 +269,7 @@ class Pipeline:
             "web_search": web_search,
         }
 
-        print(
-            f"[MINTIFY] pipe() | model={actual_model!r} | file_ids={file_ids} | "
-            f"web_search={web_search} | "
-            f"owui_system={'set' if owui_system else 'empty'} | msg={clean_msg!r}",
-            flush=True,
-        )
+        _log_payload("/api/pipe", payload)
 
         yield from self._stream("/api/pipe", payload)
 
