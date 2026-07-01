@@ -59,6 +59,32 @@ Swap the files (keep the names) — no code change needed. **Two static folders 
 - **Bewertung panel (bg, border, header, hover)** — `src/lib/components/chat/JudgementPanel.svelte`
 - **Text selection, links, form accent-color** — `src/app.css` (`MINTIFY brand accents` block)
 - **Placeholder logo size + alignment** — `src/lib/components/chat/Placeholder.svelte`, `ChatPlaceholder.svelte`
+- **Model dock bar** (see below) — `src/lib/components/chat/ModelDock.svelte`, mounted in `Navbar.svelte`
+
+## Model dock bar
+
+A dock-like horizontal icon bar for picking the model/"mode", added **alongside**
+the existing dropdown model selector (the dropdown still works; the dock stays in
+sync with it).
+
+- **New component** `src/lib/components/chat/ModelDock.svelte`
+  - Renders one circular avatar per model from the `$models` store, using each
+    model's `info.meta.profile_image_url` (falls back to `/static/favicon.png`) —
+    same image the dropdown uses. Set a model's icon in **Workspace → Models**.
+  - Binds the same `selectedModels` array as the dropdown; clicking an icon does
+    `selectedModels = [model.id]`, so dock ↔ dropdown selection is always synced.
+    No `Chat.svelte` / pipeline / backend changes were needed.
+  - Dock feel: hover scale, active model gets a ring + dot (`mintify-blue` light /
+    `mintify-green` dark) and stays fully opaque; inactive icons are dimmed.
+  - Background is a light MINTIFY green: `bg-mintify-green/35 border-mintify-green-dark/40`
+    (light) and `bg-mintify-green-dark/20` (dark). **To adjust the green,** change
+    the `/35` opacity (higher = greener, lower = lighter).
+  - `home` prop: on the landing/new-chat page the dock is rendered bigger
+    (`size-12` icons) and lower (`mt-6`); during an active chat it's compact
+    (`size-9`). Transition is animated.
+- **Mounted** in `src/lib/components/chat/Navbar.svelte`: a centered row directly
+  below the main navbar row, gated by the existing `showModelSelector` flag, with
+  `home={!history.currentId && !$chatId}` (same landing-state test the banners use).
 
 ## Apply changes
 

@@ -201,7 +201,7 @@
 
 	{#if showModelSelector}
 		<div class="flex justify-center w-full px-1.5 mt-1 pointer-events-auto">
-			<ModelDock bind:selectedModels />
+			<ModelDock bind:selectedModels home={!history.currentId && !$chatId} />
 		</div>
 	{/if}
 

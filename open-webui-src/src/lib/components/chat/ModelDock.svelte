@@ -4,6 +4,8 @@
 
 	// Two-way bound from Navbar → same array of model ids the dropdown uses.
 	export let selectedModels = [''];
+	// On the landing/new-chat page we render the dock lower and bigger.
+	export let home = false;
 
 	const selectModel = (id: string) => {
 		selectedModels = [id];
@@ -12,7 +14,9 @@
 
 {#if $models.length > 0}
 	<div
-		class="flex items-end gap-1.5 px-2 py-1.5 rounded-2xl bg-white/70 dark:bg-gray-850/70 border border-gray-100 dark:border-gray-800 shadow-sm backdrop-blur-sm"
+		class="flex items-end rounded-2xl border shadow-sm backdrop-blur-sm transition-all duration-200
+		bg-mintify-green/35 border-mintify-green-dark/40 dark:bg-mintify-green-dark/20 dark:border-mintify-green/25
+		{home ? 'gap-2.5 px-3.5 py-2.5 mt-6' : 'gap-1.5 px-2 py-1.5'}"
 	>
 		{#each $models as model (model.id)}
 			{@const active = selectedModels[0] === model.id}
@@ -29,13 +33,15 @@
 					<img
 						src={model?.info?.meta?.profile_image_url ?? '/static/favicon.png'}
 						alt={model.name}
-						class="size-9 rounded-full object-cover ring-2 transition-all duration-150 {active
-							? 'ring-gray-800 dark:ring-gray-100'
+						class="rounded-full object-cover ring-2 transition-all duration-150 {home
+							? 'size-12'
+							: 'size-9'} {active
+							? 'ring-mintify-blue dark:ring-mintify-green'
 							: 'ring-transparent'}"
 					/>
 					{#if active}
 						<span
-							class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full bg-gray-800 dark:bg-gray-100"
+							class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full bg-mintify-blue dark:bg-mintify-green"
 						></span>
 					{/if}
 				</button>
