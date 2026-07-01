@@ -22,6 +22,7 @@
 
 	import ShareChatModal from '../chat/ShareChatModal.svelte';
 	import ModelSelector from '../chat/ModelSelector.svelte';
+	import ModelDock from '../chat/ModelDock.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import Menu from '$lib/components/layout/Navbar/Menu.svelte';
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
@@ -197,6 +198,12 @@
 			</div>
 		</div>
 	</div>
+
+	{#if showModelSelector}
+		<div class="flex justify-center w-full px-1.5 mt-1 pointer-events-auto">
+			<ModelDock bind:selectedModels />
+		</div>
+	{/if}
 
 	{#if !history.currentId && !$chatId && ($banners.length > 0 || ($config?.license_metadata?.type ?? null) === 'trial' || (($config?.license_metadata?.seats ?? null) !== null && $config?.user_count > $config?.license_metadata?.seats))}
 		<div class=" w-full z-30 mt-5">
