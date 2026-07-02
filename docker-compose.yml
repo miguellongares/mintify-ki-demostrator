@@ -138,6 +138,7 @@ services:
       - AUDIO_TTS_VOICE=de-DE
       - CONTENT_EXTRACTION_ENGINE=docling
       - DOCLING_SERVER_URL=http://host.docker.internal:5001
+      - USER_PERMISSIONS_CHAT_CONTROLS=False
     volumes:
       - ./data/open-webui:/app/backend/data
     extra_hosts:

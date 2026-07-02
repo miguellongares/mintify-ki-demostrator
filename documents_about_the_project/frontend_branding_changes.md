@@ -74,17 +74,42 @@ sync with it).
   - Binds the same `selectedModels` array as the dropdown; clicking an icon does
     `selectedModels = [model.id]`, so dock ↔ dropdown selection is always synced.
     No `Chat.svelte` / pipeline / backend changes were needed.
-  - Dock feel: hover scale, active model gets a ring + dot (`mintify-blue` light /
-    `mintify-green` dark) and stays fully opaque; inactive icons are dimmed.
-  - Background is a light MINTIFY green: `bg-mintify-green/35 border-mintify-green-dark/40`
-    (light) and `bg-mintify-green-dark/20` (dark). **To adjust the green,** change
-    the `/35` opacity (higher = greener, lower = lighter).
+  - **Style — segmented dock:** a white / `gray-850` rounded-**full** pill
+    (`border-gray-100` / `gray-800`, soft shadow). Each model is its own circular
+    segment with a ring: inactive = `ring-2 ring-gray-200` (`gray-700` dark) and
+    dimmed to `opacity-70`; **active = `ring-[3px] ring-mintify-green` + `scale-110`**
+    (the ring + scale is the only active indicator). Hover lifts inactive icons
+    (`scale-105`, full opacity).
   - `home` prop: on the landing/new-chat page the dock is rendered bigger
     (`size-12` icons) and lower (`mt-6`); during an active chat it's compact
     (`size-9`). Transition is animated.
 - **Mounted** in `src/lib/components/chat/Navbar.svelte`: a centered row directly
   below the main navbar row, gated by the existing `showModelSelector` flag, with
   `home={!history.currentId && !$chatId}` (same landing-state test the banners use).
+
+### Model icon image specs
+
+The dock crops each image to a **circle** (`rounded-full` + `object-cover`) and
+shows it small (`size-9` = 36 px in chat, `size-12` = 48 px on home; 2–3× on
+retina). Set it per model in **Workspace → Models → profile image**.
+
+- **Square (1:1)**, **512×512 px**, **PNG** (transparent) or SVG.
+- Background **transparent** or a solid brand color (blue `#1C3E73` / green `#A7F57E`).
+- **One simple, bold, centered symbol** kept within the middle ~75% (the circular
+  crop eats the corners); high contrast so it reads on both the light and dark pill.
+- Use the **same style** (background, stroke weight, padding) across all models so
+  the bar looks like a coherent set.
+
+**Fill-in-the-blank generation prompt** (swap the first blank per model):
+
+> A flat, minimalist app icon of a **______** [e.g. graduation cap / magnifying
+> glass / shopping bag / person], centered on a **1:1 square** canvas at **512×512 px**.
+> Single bold symbol, clean thick strokes, **generous empty padding around the
+> symbol** (subject fills only the center ~75%, safe for a circular crop). Solid
+> **[MINTIFY blue #1C3E73 / or transparent]** background, symbol in
+> **[white / MINTIFY green #A7F57E]**, high contrast. No text, no shadows, no
+> gradients, no photographic detail — simple vector-style flat design, legible when
+> scaled down to a tiny circular avatar.
 
 ## Apply changes
 
