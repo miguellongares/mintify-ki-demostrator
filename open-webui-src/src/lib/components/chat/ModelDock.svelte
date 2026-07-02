@@ -14,9 +14,8 @@
 
 {#if $models.length > 0}
 	<div
-		class="flex items-end rounded-2xl border shadow-sm backdrop-blur-sm transition-all duration-200
-		bg-mintify-green/35 border-mintify-green-dark/40 dark:bg-mintify-green-dark/20 dark:border-mintify-green/25
-		{home ? 'gap-2.5 px-3.5 py-2.5 mt-6' : 'gap-1.5 px-2 py-1.5'}"
+		class="flex items-center rounded-full border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-850 shadow-sm transition-all duration-200
+		{home ? 'gap-2.5 px-2.5 py-2 mt-6' : 'gap-1.5 px-1.5 py-1'}"
 	>
 		{#each $models as model (model.id)}
 			{@const active = selectedModels[0] === model.id}
@@ -26,24 +25,19 @@
 					aria-label={model.name}
 					aria-pressed={active}
 					on:click={() => selectModel(model.id)}
-					class="group relative flex items-center justify-center rounded-full transition-all duration-150 ease-out origin-bottom hover:scale-110 focus:outline-none {active
-						? 'scale-105'
-						: 'opacity-60 hover:opacity-100'}"
+					class="flex items-center justify-center rounded-full transition-all duration-150 ease-out focus:outline-none {active
+						? 'scale-110'
+						: 'opacity-70 hover:opacity-100 hover:scale-105'}"
 				>
 					<img
 						src={model?.info?.meta?.profile_image_url ?? '/static/favicon.png'}
 						alt={model.name}
-						class="rounded-full object-cover ring-2 transition-all duration-150 {home
+						class="rounded-full object-cover bg-white dark:bg-gray-900 transition-all duration-150 {home
 							? 'size-12'
 							: 'size-9'} {active
-							? 'ring-mintify-blue dark:ring-mintify-green'
-							: 'ring-transparent'}"
+							? 'ring-[3px] ring-mintify-green'
+							: 'ring-2 ring-gray-200 dark:ring-gray-700'}"
 					/>
-					{#if active}
-						<span
-							class="absolute -bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full bg-mintify-blue dark:bg-mintify-green"
-						></span>
-					{/if}
 				</button>
 			</Tooltip>
 		{/each}
