@@ -78,7 +78,7 @@
 				</div>
 
 				<div
-					class="flex-1 overflow-hidden max-w-full py-0.5
+					class="md:hidden flex-none overflow-hidden max-w-[45%] py-0.5
 			{$showSidebar ? 'ml-1' : ''}
 			"
 				>
@@ -87,7 +87,15 @@
 					{/if}
 				</div>
 
-				<div class="self-start flex flex-none items-center text-gray-600 dark:text-gray-400">
+				{#if showModelSelector}
+					<div class="hidden md:flex flex-1 justify-center items-center min-w-0 px-2">
+						<ModelDock bind:selectedModels home={!history.currentId && !$chatId} />
+					</div>
+				{/if}
+
+				<div
+					class="self-start ml-auto md:ml-0 flex flex-none items-center text-gray-600 dark:text-gray-400"
+				>
 					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
 					{#if shareEnabled && chat && (chat.id || $temporaryChatEnabled)}
 						<Menu
@@ -140,13 +148,19 @@
 
 					<Tooltip content="Judgement-Modus">
 						<button
-							class=" flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition {$showJudgement ? 'bg-gray-100 dark:bg-gray-800' : ''}"
+							class=" flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition {$showJudgement
+								? 'bg-gray-100 dark:bg-gray-800'
+								: ''}"
 							on:click={async () => {
 								await showJudgement.set(!$showJudgement);
 							}}
 							aria-label="Judgement Mode"
 						>
-							<div class="m-auto self-center {$showJudgement ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}">
+							<div
+								class="m-auto self-center {$showJudgement
+									? 'text-blue-600 dark:text-blue-400'
+									: 'text-gray-600 dark:text-gray-400'}"
+							>
 								<Scale className="size-5" />
 							</div>
 						</button>
@@ -200,7 +214,7 @@
 	</div>
 
 	{#if showModelSelector}
-		<div class="flex justify-center w-full px-1.5 mt-1 pointer-events-auto">
+		<div class="md:hidden flex justify-center w-full px-1.5 mt-1 pointer-events-auto">
 			<ModelDock bind:selectedModels home={!history.currentId && !$chatId} />
 		</div>
 	{/if}
