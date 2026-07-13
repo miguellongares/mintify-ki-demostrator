@@ -114,6 +114,22 @@ def _extract_file_ids(body: dict, messages: list) -> list[str]:
     return list(dict.fromkeys(ids))
 
 
+def _extract_user_id(body: dict) -> str | None:
+    """OWUI id of the person chatting — the rag-backend uses it to include the
+    user's OWN personal files (sidebar feature) in retrieval, scoped so no other
+    user's documents can ever surface. OWUI puts it at body.metadata.user_id;
+    body.user.id is kept as a fallback."""
+    if not isinstance(body, dict):
+        return None
+    meta = body.get("metadata")
+    if isinstance(meta, dict) and meta.get("user_id"):
+        return str(meta["user_id"])
+    user = body.get("user")
+    if isinstance(user, dict) and user.get("id"):
+        return str(user["id"])
+    return None
+
+
 def _web_search_enabled(body: dict) -> bool:
     """True when the user toggled 🌐 web search for this turn.
 
@@ -266,6 +282,7 @@ class Pipeline:
             "base_system_prompt": self.valves.SYSTEM_PROMPT,
             "top_k": self.valves.TOP_K,
             "file_ids": file_ids,
+            "user_id": _extract_user_id(body),
             "web_search": web_search,
         }
 

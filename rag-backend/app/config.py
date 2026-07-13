@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     # (Settings → Account → API Keys) and set it here so the indexer can read
     # any user's file content. Empty → indexing is effectively disabled.
     owui_api_key: str = ""
+    # Per-user personal files (sidebar drag & drop). SQLite DB + raw files live
+    # under this directory — bind-mounted to ./data/personal_docs on the host.
+    personal_docs_dir: str = "/data/personal_docs"
+    # docling-serve instance used to extract personal-file text — the SAME
+    # server OWUI uses for knowledge-base/chat uploads (RunPod, SSH tunnel on
+    # host port 5001; OWUI reaches it via DOCLING_SERVER_URL too).
+    docling_server_url: str = "http://host.docker.internal:5001"
 
     # --- Web search (backend-owned: SearXNG search + trafilatura extraction) ---
     # The pipeline forwards web_search=True + the query when the user enables 🌐.

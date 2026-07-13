@@ -7,7 +7,7 @@ semantically similar PDF chunks from the Qdrant collection.
 """
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchAny
+from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 
 
 class Retriever:
@@ -20,6 +20,7 @@ class Retriever:
         query_vec: list[float],
         top_k: int,
         file_ids: list[str] | None = None,
+        user_id: str | None = None,
     ) -> tuple[str, list[dict]]:
         """
         Search for the top-K most similar chunks to query_vec.
@@ -43,19 +44,28 @@ class Retriever:
             print("[RAG] No documents in Qdrant — returning fallback.")
             return "Noch keine Dokumente im Wissensspeicher.", []
 
-        # STRICT scoping: retrieve ONLY from knowledge the user explicitly attached —
-        # the model's knowledge base AND files dropped in THIS chat (their ids arrive
-        # in file_ids). No attachment (None OR empty) → retrieve nothing, so the model
-        # answers on its own. This prevents a file dropped in one chat from surfacing
-        # in another: the old `None → search the whole index` path leaked across chats
-        # whenever no KB was attached.
-        if not file_ids:
-            print("[RAG] No knowledge attached — skipping retrieval (model-only).")
+        # STRICT scoping: retrieve ONLY from
+        #   (a) knowledge the user explicitly attached — the model's knowledge base
+        #       AND files dropped in THIS chat (their ids arrive in file_ids), and
+        #   (b) the calling user's OWN personal files (sidebar feature) — their
+        #       Qdrant points carry user_id, OWUI points don't, so matching
+        #       user_id == <caller> can never surface another user's documents.
+        # Neither attachment nor user id → retrieve nothing, so the model answers
+        # on its own. We never search the whole index (that leaked files dropped
+        # in one chat into other chats).
+        should = []
+        if file_ids:
+            should.append(FieldCondition(key="owui_file_id", match=MatchAny(any=file_ids)))
+        if user_id:
+            should.append(FieldCondition(key="user_id", match=MatchValue(value=user_id)))
+        if not should:
+            print("[RAG] No knowledge attached and no user id — skipping retrieval.")
             return "", []
-        query_filter = Filter(
-            must=[FieldCondition(key="owui_file_id", match=MatchAny(any=file_ids))]
+        query_filter = Filter(should=should)
+        print(
+            f"[RAG] Filtering Qdrant by owui_file_id ∈ {file_ids or []} "
+            f"OR personal docs of user_id={user_id}"
         )
-        print(f"[RAG] Filtering Qdrant by owui_file_id ∈ {file_ids}")
 
         try:
             result = self._qdrant.query_points(
@@ -76,7 +86,12 @@ class Retriever:
         # so that truly irrelevant chunks are not injected into the prompt.
         if not hits:
             print("[RAG] Qdrant search returned 0 hits.")
-            return "Keine relevanten Dokumente gefunden.", []
+            if file_ids:
+                return "Keine relevanten Dokumente gefunden.", []
+            # Personal-docs-only search and the user simply has none indexed —
+            # behave like "nothing attached" (model-only) instead of injecting
+            # a misleading "no documents found" context.
+            return "", []
 
         hits_info = []
         parts = []
