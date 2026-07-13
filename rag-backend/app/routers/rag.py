@@ -68,6 +68,9 @@ class PipeRequest(BaseModel):
     # OWUI file IDs the user has attached as Knowledge to this chat.
     # None = no filter (legacy behaviour). Empty list = explicit "no knowledge attached".
     file_ids: list[str] | None = None
+    # OWUI user id of the person chatting (from body.metadata in the pipeline).
+    # Lets retrieval include the caller's OWN personal files (and only theirs).
+    user_id: str | None = None
     # True when the user enabled 🌐 for this turn → the backend runs SearXNG +
     # trafilatura over user_message and injects the results.
     web_search: bool = False
@@ -92,7 +95,7 @@ async def pipe(
     print(f"[RAG] pipe() called")
     print(f"[RAG] user_message: {repr(req.user_message[:200])}")
     print(f"[RAG] model_id: {req.model_id}")
-    print(f"[RAG] file_ids: {req.file_ids} | web_search: {req.web_search}")
+    print(f"[RAG] file_ids: {req.file_ids} | user_id: {req.user_id} | web_search: {req.web_search}")
 
     # Web search (SearXNG + trafilatura) — only when the user enabled 🌐.
     web_results: list[WebResult] = []
@@ -110,7 +113,9 @@ async def pipe(
     # Indexing is no longer triggered here — OWUI pushes new/updated files to
     # POST /api/index as they're uploaded (see routers/index.py).
     query_vec = embedder.encode(req.user_message)
-    context, hits_info = retriever.retrieve(query_vec, req.top_k, file_ids=req.file_ids)
+    context, hits_info = retriever.retrieve(
+        query_vec, req.top_k, file_ids=req.file_ids, user_id=req.user_id
+    )
 
     print(f"[RAG] Retrieved {len(hits_info)} chunks:")
     for i, h in enumerate(hits_info):

@@ -1,9 +1,12 @@
 from app.config import Settings, settings
 from app.services.embedder import Embedder
+from app.services.extractor import Extractor
 from app.services.indexer import Indexer
 from app.services.judge_client import JudgeClient
 from app.services.llm_client import LLMClient
+from app.services.owui_auth import OwuiAuth
 from app.services.owui_client import OWUIClient
+from app.services.personal_docs import PersonalDocsStore
 from app.services.retriever import Retriever
 from app.services.tts_client import Qwen3TTSClient, TTSClient
 from app.services.web_search import WebSearcher
@@ -16,11 +19,14 @@ _llm_client: LLMClient | None = None
 _judge_client: JudgeClient | None = None
 _tts_client: TTSClient | None = None
 _web_searcher: WebSearcher | None = None
+_personal_docs: PersonalDocsStore | None = None
+_owui_auth: OwuiAuth | None = None
+_extractor: Extractor | None = None
 
 #
 def init_singletons(qdrant_client):
     global _embedder, _retriever, _indexer, _llm_client, _judge_client, _tts_client
-    global _owui_client, _web_searcher
+    global _owui_client, _web_searcher, _personal_docs, _owui_auth, _extractor
 
     _embedder = Embedder(settings.embedding_model)
     _retriever = Retriever(qdrant_client, settings.collection_name)
@@ -46,6 +52,12 @@ def init_singletons(qdrant_client):
         min_doc_chars=settings.web_min_doc_chars,
     )
     print(f"[RAG] WebSearcher → {settings.searxng_url}")
+
+    _personal_docs = PersonalDocsStore(settings.personal_docs_dir)
+    _owui_auth = OwuiAuth(settings.owui_base_url)
+    _extractor = Extractor(settings.docling_server_url)
+    print(f"[RAG] PersonalDocsStore → {settings.personal_docs_dir}")
+    print(f"[RAG] Extractor (docling) → {settings.docling_server_url}")
 
     if settings.tts_url:
         _tts_client = Qwen3TTSClient(settings.tts_url)
@@ -84,3 +96,15 @@ def get_tts_client() -> TTSClient | None:
 
 def get_web_searcher() -> WebSearcher:
     return _web_searcher
+
+
+def get_personal_docs() -> PersonalDocsStore:
+    return _personal_docs
+
+
+def get_owui_auth() -> OwuiAuth:
+    return _owui_auth
+
+
+def get_extractor() -> Extractor:
+    return _extractor

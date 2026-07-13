@@ -22,6 +22,13 @@ Deterministic Qdrant point IDs:
 
 Qdrant payload per point: text, source (filename), owui_file_id, file_hash,
 chunk_index. The retriever filters on `owui_file_id`, so that field is required.
+
+Personal files (sidebar feature) are indexed into the SAME collection via
+index_personal_doc(): their points carry {personal_doc_id, user_id,
+doc_type="personal"} INSTEAD of owui_file_id. The retriever additionally
+matches `user_id == <caller>`, so each user only ever retrieves their own
+personal documents; reconcile()/sync_all() ignore these points because they
+have no owui_file_id.
 """
 
 import hashlib
@@ -97,6 +104,67 @@ class Indexer:
         self._delete_points(file_id)
         self._indexed.pop(file_id, None)
         print(f"[RAG] Deleted Qdrant points for owui_file_id={file_id}", flush=True)
+
+    def index_personal_doc(
+        self, document_id: str, user_id: str, filename: str, text: str
+    ) -> int:
+        """(Re)index one personal file's extracted text, scoped to its owner.
+        Same chunking/id scheme as OWUI files; document_id is a uuid4 hex."""
+        if not text.strip():
+            return 0
+
+        # Drop stale points first so re-index stays consistent.
+        self.delete_personal_doc(document_id)
+
+        id_base = int(document_id.replace("-", ""), 16) % (2**53)
+        points = []
+        for i, chunk in enumerate(self._chunk_text(text)):
+            vec = self._embedder.encode(chunk)
+            points.append(
+                PointStruct(
+                    id=id_base + i,
+                    vector=vec,
+                    payload={
+                        "text": chunk,
+                        # Marked so citations show it came from the user's own files.
+                        "source": f"{filename} (persönliche Datei)",
+                        "personal_doc_id": document_id,
+                        "user_id": user_id,
+                        "doc_type": "personal",
+                        "chunk_index": i,
+                    },
+                )
+            )
+
+        if points:
+            self._qdrant.upsert(
+                collection_name=self._settings.collection_name,
+                points=points,
+            )
+        print(
+            f"[RAG] Indexed {len(points)} personal chunks from '{filename}' "
+            f"(doc={document_id}, user={user_id})",
+            flush=True,
+        )
+        return len(points)
+
+    def delete_personal_doc(self, document_id: str) -> None:
+        """Remove all Qdrant points of one personal file."""
+        try:
+            self._qdrant.delete(
+                collection_name=self._settings.collection_name,
+                points_selector=FilterSelector(
+                    filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key="personal_doc_id", match=MatchValue(value=document_id)
+                            )
+                        ]
+                    )
+                ),
+            )
+        except Exception as e:
+            print(f"[RAG] delete personal points failed for {document_id}: {e}", flush=True)
 
     def reconcile(self) -> dict:
         """Drop Qdrant points whose owui_file_id no longer exists in OWUI — a safety

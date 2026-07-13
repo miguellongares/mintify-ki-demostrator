@@ -52,10 +52,15 @@ services:
       # Backend-owned web search: the rag-backend queries SearXNG and extracts
       # page content with trafilatura when the user enables 🌐 (see web_search.py).
       - SEARXNG_URL=http://searxng:8080
+      # Personal-docs text extraction uses the SAME docling-serve instance as
+      # OWUI's knowledge-base uploads (RunPod, SSH tunnel on host port 5001).
+      - DOCLING_SERVER_URL=${DOCLING_SERVER_URL:-http://host.docker.internal:5001}
     volumes:
       # Document text now comes from OWUI's API (by file id), not from disk —
       # no uploads mount needed.
       - ./rag-backend/app:/app/app
+      # Per-user personal files (sidebar drag & drop): SQLite DB + raw files.
+      - ./data/personal_docs:/data/personal_docs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
