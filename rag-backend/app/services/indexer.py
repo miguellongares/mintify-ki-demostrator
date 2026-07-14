@@ -40,24 +40,29 @@ from qdrant_client.models import (
     Filter,
     FilterSelector,
     MatchValue,
+    Modifier,
     PointStruct,
+    SparseVectorParams,
     VectorParams,
 )
 
 from app.config import Settings
 from app.services.embedder import Embedder
 from app.services.owui_client import OWUIClient
+from app.services.sparse_embedder import SparseEmbedder
 
 
 class Indexer:
     def __init__(
         self,
         embedder: Embedder,
+        sparse_embedder: SparseEmbedder,
         qdrant: QdrantClient,
         settings: Settings,
         owui: OWUIClient,
     ):
         self._embedder = embedder
+        self._sparse = sparse_embedder
         self._qdrant = qdrant
         self._settings = settings
         self._owui = owui
@@ -119,11 +124,13 @@ class Indexer:
         id_base = int(document_id.replace("-", ""), 16) % (2**53)
         points = []
         for i, chunk in enumerate(self._chunk_text(text)):
-            vec = self._embedder.encode(chunk)
             points.append(
                 PointStruct(
                     id=id_base + i,
-                    vector=vec,
+                    vector={
+                        "dense": self._embedder.encode_passage(chunk),
+                        "bm25": self._sparse.encode_passage(chunk),
+                    },
                     payload={
                         "text": chunk,
                         # Marked so citations show it came from the user's own files.
@@ -220,11 +227,13 @@ class Indexer:
         id_base = int(file_id.replace("-", ""), 16) % (2**53)
         points = []
         for i, chunk in enumerate(self._chunk_text(content)):
-            vec = self._embedder.encode(chunk)
             points.append(
                 PointStruct(
                     id=id_base + i,
-                    vector=vec,
+                    vector={
+                        "dense": self._embedder.encode_passage(chunk),
+                        "bm25": self._sparse.encode_passage(chunk),
+                    },
                     payload={
                         "text": chunk,
                         "source": filename,
@@ -279,16 +288,48 @@ class Indexer:
         return ids
 
     def _ensure_collection(self):
-        """Create the Qdrant collection if it doesn't already exist."""
+        """Create the Qdrant collection if it doesn't exist — or recreate it if it
+        still has the pre-hybrid schema (single unnamed dense vector, no sparse)."""
+        name = self._settings.collection_name
         existing = [c.name for c in self._qdrant.get_collections().collections]
-        if self._settings.collection_name not in existing:
-            self._qdrant.create_collection(
-                collection_name=self._settings.collection_name,
-                # size=384 must match the embedding model's output dimension.
-                # distance=COSINE is standard for semantic similarity search.
-                vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+
+        if name in existing and not self._has_hybrid_schema(name):
+            print(
+                f"[RAG] WARNING: collection '{name}' has the old dense-only schema — "
+                f"recreating it for hybrid (dense + BM25) search. All points were "
+                f"dropped; refill with POST /api/sync and POST /api/personal-docs/sync.",
+                flush=True,
             )
-            print(f"[RAG] Created Qdrant collection '{self._settings.collection_name}'")
+            self._qdrant.delete_collection(name)
+            existing.remove(name)
+
+        if name not in existing:
+            self._qdrant.create_collection(
+                collection_name=name,
+                # distance=COSINE is standard for semantic similarity search.
+                vectors_config={
+                    "dense": VectorParams(size=self._embedder.dim, distance=Distance.COSINE)
+                },
+                # BM25 arm: term frequencies come from the client, IDF weighting is
+                # applied server-side by Qdrant (Modifier.IDF).
+                sparse_vectors_config={"bm25": SparseVectorParams(modifier=Modifier.IDF)},
+            )
+            print(f"[RAG] Created Qdrant collection '{name}' (hybrid dense+bm25)")
+
+    def _has_hybrid_schema(self, name: str) -> bool:
+        """True if the collection has the named 'dense' vector (matching the current
+        embedding dim) and the 'bm25' sparse vector."""
+        try:
+            params = self._qdrant.get_collection(name).config.params
+        except Exception as e:
+            print(f"[RAG] Could not inspect collection '{name}': {e}", flush=True)
+            return True  # don't wipe on a read error
+        dense = params.vectors
+        if not isinstance(dense, dict) or "dense" not in dense:
+            return False
+        if dense["dense"].size != self._embedder.dim:
+            return False
+        return bool(params.sparse_vectors) and "bm25" in params.sparse_vectors
 
     def _prefetch_indexed(self):
         """Rebuild the owui_file_id → file_hash map from existing Qdrant points so

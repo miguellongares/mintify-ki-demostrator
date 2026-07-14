@@ -72,6 +72,28 @@ class LLMClient:
         print(f"[RAG] WARNING: model '{model}' not found in any vLLM endpoint, using {fallback}")
         return fallback
 
+    def complete(
+        self,
+        messages: list[dict],
+        model: str,
+        temperature: float = 0.0,
+        max_tokens: int = 150,
+    ) -> str:
+        """
+        Non-streaming chat completion — for internal meta-calls (e.g. query
+        rewriting) where the full short answer is needed before continuing.
+        Raises on failure; callers decide their own fallback.
+        """
+        url = self._resolve_url(model)
+        client = OpenAI(base_url=f"{url}/v1", api_key="vllm")
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )  # type: ignore
+        return completion.choices[0].message.content or ""
+
     def stream(self, messages: list[dict], model: str, temperature: float) -> Generator[str, None, None]:
         """
         Send an OpenAI-compatible chat completion request to vLLM and stream back tokens.

@@ -4,6 +4,9 @@ pydantic>=2.0.0
 pydantic-settings>=2.0.0
 sentence-transformers>=2.7.0
 qdrant-client>=1.9.0
+# BM25 sparse vectors for hybrid retrieval (Qdrant/bm25 — no ONNX model, just a
+# small stopword/config fetch from HuggingFace on first use)
+fastembed>=0.7.0
 openai>=1.0.0
 httpx>=0.27.0
 # Multipart form parsing for personal-docs file uploads (FastAPI UploadFile)

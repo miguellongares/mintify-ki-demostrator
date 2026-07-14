@@ -15,12 +15,16 @@ from pydantic import BaseModel
 from app.dependencies import (
     get_embedder,
     get_llm_client,
+    get_query_rewriter,
     get_retriever,
+    get_sparse_embedder,
     get_web_searcher,
 )
 from app.services.embedder import Embedder
 from app.services.llm_client import LLMClient
+from app.services.query_rewriter import QueryRewriter
 from app.services.retriever import Retriever
+from app.services.sparse_embedder import SparseEmbedder
 from app.services.web_search import WebResult, WebSearcher
 
 router = APIRouter()
@@ -87,6 +91,8 @@ class PassthroughRequest(BaseModel):
 async def pipe(
     req: PipeRequest,
     embedder: Embedder = Depends(get_embedder),
+    sparse_embedder: SparseEmbedder = Depends(get_sparse_embedder),
+    rewriter: QueryRewriter = Depends(get_query_rewriter),
     retriever: Retriever = Depends(get_retriever),
     llm: LLMClient = Depends(get_llm_client),
     web_searcher: WebSearcher = Depends(get_web_searcher),
@@ -112,9 +118,21 @@ async def pipe(
 
     # Indexing is no longer triggered here — OWUI pushes new/updated files to
     # POST /api/index as they're uploaded (see routers/index.py).
-    query_vec = embedder.encode(req.user_message)
+    # Let the LLM turn the message into a document-vocabulary search query:
+    # resolve follow-up references ("Ich meine den HSN/TSN") against the chat
+    # history and expand everyday words into the terms documents actually use
+    # ("kostet" → "Kaufpreis"). Only the retrieval query changes; the messages
+    # sent to vLLM stay untouched. Skipped when retrieval can't happen anyway
+    # (same condition the retriever checks).
+    search_query = req.user_message
+    if req.file_ids or req.user_id:
+        search_query = rewriter.rewrite(req.user_message, req.messages, req.model_id)
     context, hits_info = retriever.retrieve(
-        query_vec, req.top_k, file_ids=req.file_ids, user_id=req.user_id
+        embedder.encode_query(search_query),
+        sparse_embedder.encode_query(search_query),
+        req.top_k,
+        file_ids=req.file_ids,
+        user_id=req.user_id,
     )
 
     print(f"[RAG] Retrieved {len(hits_info)} chunks:")
