@@ -5,7 +5,16 @@ class Settings(BaseSettings):
     vllm_base_urls: str = "http://host.docker.internal:8002"
     qdrant_url: str = "http://qdrant:6333"
     collection_name: str = "mintify_rag"
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model: str = "intfloat/multilingual-e5-small"
+    # e5 models are asymmetric: queries and passages must carry these prefixes
+    # or similarity scores degrade badly. Set both to "" for symmetric models
+    # (e.g. the old all-MiniLM-L6-v2).
+    embedding_query_prefix: str = "query: "
+    embedding_passage_prefix: str = "passage: "
+    # Hits below this cosine similarity are dropped instead of injected into the
+    # prompt. e5 scores cluster high (unrelated ≈ 0.70–0.78, related ≈ 0.83+),
+    # so 0.80 is the starting point — tune from the [RAG] score logs. 0 disables.
+    min_score: float = 0.80
     chunk_size: int = 800
     chunk_overlap: int = 100
     top_k: int = 5

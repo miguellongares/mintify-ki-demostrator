@@ -1,8 +1,9 @@
 """
 Retriever — semantic search in Qdrant
 --------------------------------------
-Takes a query vector (from Embedder.encode()) and returns the top-K most
-semantically similar PDF chunks from the Qdrant collection.
+Takes a query vector (from Embedder.encode_query()) and returns the top-K most
+semantically similar chunks from the Qdrant collection, dropping hits below
+the min_score relevance floor.
 
 """
 
@@ -11,9 +12,12 @@ from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 
 
 class Retriever:
-    def __init__(self, qdrant: QdrantClient, collection: str):
+    def __init__(self, qdrant: QdrantClient, collection: str, min_score: float = 0.0):
         self._qdrant = qdrant
         self._collection = collection
+        # Hits below this cosine similarity are dropped instead of injected
+        # into the prompt. 0 disables the filter.
+        self._min_score = min_score
 
     def retrieve(
         self,
@@ -79,13 +83,23 @@ class Retriever:
         except Exception as e:
             print(f"[RAG] ERROR during Qdrant search: {e}")
             return f"Fehler bei der Vektorsuche: {e}", []
-        
-        # This part of the code should be keep, then it would be wise to have a mechanism
-        # where the mechanism doesn't find any relevant documents
-        # TODO: replace this empty check with a score threshold (e.g. filter out hits below 0.3)                                          
-        # so that truly irrelevant chunks are not injected into the prompt.
+
+        # Relevance floor: drop hits below min_score so truly irrelevant chunks
+        # are never injected into the prompt. Log the dropped scores — they're
+        # the data for tuning MIN_SCORE.
+        if self._min_score > 0 and hits:
+            kept = [h for h in hits if h.score >= self._min_score]
+            dropped = [h for h in hits if h.score < self._min_score]
+            if dropped:
+                print(
+                    f"[RAG] min_score={self._min_score}: kept {len(kept)}, "
+                    f"dropped {len(dropped)} "
+                    f"(scores: {[round(h.score, 3) for h in dropped]})"
+                )
+            hits = kept
+
         if not hits:
-            print("[RAG] Qdrant search returned 0 hits.")
+            print("[RAG] No hits at or above the relevance threshold.")
             if file_ids:
                 return "Keine relevanten Dokumente gefunden.", []
             # Personal-docs-only search and the user simply has none indexed —

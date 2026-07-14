@@ -28,8 +28,12 @@ def init_singletons(qdrant_client):
     global _embedder, _retriever, _indexer, _llm_client, _judge_client, _tts_client
     global _owui_client, _web_searcher, _personal_docs, _owui_auth, _extractor
 
-    _embedder = Embedder(settings.embedding_model)
-    _retriever = Retriever(qdrant_client, settings.collection_name)
+    _embedder = Embedder(
+        settings.embedding_model,
+        settings.embedding_query_prefix,
+        settings.embedding_passage_prefix,
+    )
+    _retriever = Retriever(qdrant_client, settings.collection_name, settings.min_score)
     _owui_client = OWUIClient(settings.owui_base_url, settings.owui_api_key)
     _indexer = Indexer(_embedder, qdrant_client, settings, _owui_client)
 

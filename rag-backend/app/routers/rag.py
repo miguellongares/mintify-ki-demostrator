@@ -112,7 +112,7 @@ async def pipe(
 
     # Indexing is no longer triggered here — OWUI pushes new/updated files to
     # POST /api/index as they're uploaded (see routers/index.py).
-    query_vec = embedder.encode(req.user_message)
+    query_vec = embedder.encode_query(req.user_message)
     context, hits_info = retriever.retrieve(
         query_vec, req.top_k, file_ids=req.file_ids, user_id=req.user_id
     )

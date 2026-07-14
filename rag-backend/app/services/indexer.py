@@ -119,7 +119,7 @@ class Indexer:
         id_base = int(document_id.replace("-", ""), 16) % (2**53)
         points = []
         for i, chunk in enumerate(self._chunk_text(text)):
-            vec = self._embedder.encode(chunk)
+            vec = self._embedder.encode_passage(chunk)
             points.append(
                 PointStruct(
                     id=id_base + i,
@@ -220,7 +220,7 @@ class Indexer:
         id_base = int(file_id.replace("-", ""), 16) % (2**53)
         points = []
         for i, chunk in enumerate(self._chunk_text(content)):
-            vec = self._embedder.encode(chunk)
+            vec = self._embedder.encode_passage(chunk)
             points.append(
                 PointStruct(
                     id=id_base + i,
@@ -284,9 +284,8 @@ class Indexer:
         if self._settings.collection_name not in existing:
             self._qdrant.create_collection(
                 collection_name=self._settings.collection_name,
-                # size=384 must match the embedding model's output dimension.
                 # distance=COSINE is standard for semantic similarity search.
-                vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+                vectors_config=VectorParams(size=self._embedder.dim, distance=Distance.COSINE),
             )
             print(f"[RAG] Created Qdrant collection '{self._settings.collection_name}'")
 
