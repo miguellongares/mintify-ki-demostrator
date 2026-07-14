@@ -1,37 +1,49 @@
 """
-Retriever — semantic search in Qdrant
---------------------------------------
-Takes a query vector (from Embedder.encode_query()) and returns the top-K most
-semantically similar chunks from the Qdrant collection, dropping hits below
-the min_score relevance floor.
-
+Retriever — hybrid (dense + BM25) search in Qdrant
+---------------------------------------------------
+Runs two prefetches over the collection — the dense query vector (semantic
+similarity) and a BM25 sparse vector (exact-term matching, crucial for field
+lookups like "HSN/TSN" or "FIN" in OCR'd contracts) — and fuses them with
+Reciprocal Rank Fusion (RRF). min_score bounds only the dense arm: keyword
+matches should survive even when their cosine similarity is unremarkable.
 """
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    Fusion,
+    FusionQuery,
+    MatchAny,
+    MatchValue,
+    Prefetch,
+    SparseVector,
+)
 
 
 class Retriever:
     def __init__(self, qdrant: QdrantClient, collection: str, min_score: float = 0.0):
         self._qdrant = qdrant
         self._collection = collection
-        # Hits below this cosine similarity are dropped instead of injected
-        # into the prompt. 0 disables the filter.
+        # Dense hits below this cosine similarity never enter the fusion.
+        # 0 disables the floor.
         self._min_score = min_score
 
     def retrieve(
         self,
         query_vec: list[float],
+        sparse_vec: SparseVector,
         top_k: int,
         file_ids: list[str] | None = None,
         user_id: str | None = None,
     ) -> tuple[str, list[dict]]:
         """
-        Search for the top-K most similar chunks to query_vec.
+        Hybrid search: top-K chunks by RRF over the dense and BM25 rankings.
 
         Returns (context_string, hits_info) where:
           context_string — formatted text to inject into the system prompt
           hits_info      — list of dicts with source/page/score/text for logging
+                           (score = RRF rank score, not cosine similarity)
         """
         # First check the collection exists and has points — avoids a confusing
         # Qdrant error if no PDFs have been indexed yet.
@@ -71,32 +83,38 @@ class Retriever:
             f"OR personal docs of user_id={user_id}"
         )
 
+        # Hybrid search: each arm pre-selects its own top candidates (3× the final
+        # top_k so both rankings contribute depth), then RRF fuses the two rank
+        # lists. The scope filter must sit INSIDE each prefetch — a fusion query
+        # has no top-level filter.
+        limit = min(top_k, n)
+        prefetch_limit = min(top_k * 3, n)
         try:
             result = self._qdrant.query_points(
                 collection_name=self._collection,
-                query=query_vec,
-                limit=min(top_k, n),
+                prefetch=[
+                    Prefetch(
+                        query=query_vec,
+                        using="dense",
+                        filter=query_filter,
+                        score_threshold=self._min_score or None,
+                        limit=prefetch_limit,
+                    ),
+                    Prefetch(
+                        query=sparse_vec,
+                        using="bm25",
+                        filter=query_filter,
+                        limit=prefetch_limit,
+                    ),
+                ],
+                query=FusionQuery(fusion=Fusion.RRF),
+                limit=limit,
                 with_payload=True,
-                query_filter=query_filter,
             )
             hits = result.points
         except Exception as e:
             print(f"[RAG] ERROR during Qdrant search: {e}")
             return f"Fehler bei der Vektorsuche: {e}", []
-
-        # Relevance floor: drop hits below min_score so truly irrelevant chunks
-        # are never injected into the prompt. Log the dropped scores — they're
-        # the data for tuning MIN_SCORE.
-        if self._min_score > 0 and hits:
-            kept = [h for h in hits if h.score >= self._min_score]
-            dropped = [h for h in hits if h.score < self._min_score]
-            if dropped:
-                print(
-                    f"[RAG] min_score={self._min_score}: kept {len(kept)}, "
-                    f"dropped {len(dropped)} "
-                    f"(scores: {[round(h.score, 3) for h in dropped]})"
-                )
-            hits = kept
 
         if not hits:
             print("[RAG] No hits at or above the relevance threshold.")
@@ -114,16 +132,18 @@ class Retriever:
             # OWUI-extracted text is a single blob → no page numbers. Older PDF
             # points may still carry "page"; show it when present.
             page = hit.payload.get("page")
-            score = round(hit.score, 3)   # cosine similarity, 0.0–1.0
+            score = round(hit.score, 3)   # RRF rank score (NOT cosine similarity)
             text = hit.payload.get("text", "")
             # Collect metadata for logging in the router (not injected into the prompt).
             hits_info.append({"source": source, "page": page, "score": score, "text": text})
             # Format for the system prompt: citation header + chunk text.
             # The LLM is instructed to reference these citations in its answer.
+            # RRF scores are rank-based (~0.01–0.5) and would read as nonsense to
+            # users/judges, so they stay out of the citation.
             if page is not None:
-                parts.append(f"[Quelle: {source}, Seite {page}, Relevanz {score}]\n{text}")
+                parts.append(f"[Quelle: {source}, Seite {page}]\n{text}")
             else:
-                parts.append(f"[Quelle: {source}, Relevanz {score}]\n{text}")
+                parts.append(f"[Quelle: {source}]\n{text}")
 
         # Join chunks with a visible separator so the LLM can distinguish between sources.
         return "\n\n---\n\n".join(parts), hits_info

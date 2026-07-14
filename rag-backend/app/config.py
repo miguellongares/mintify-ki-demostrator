@@ -11,10 +11,17 @@ class Settings(BaseSettings):
     # (e.g. the old all-MiniLM-L6-v2).
     embedding_query_prefix: str = "query: "
     embedding_passage_prefix: str = "passage: "
-    # Hits below this cosine similarity are dropped instead of injected into the
-    # prompt. e5 scores cluster high (unrelated ≈ 0.70–0.78, related ≈ 0.83+),
-    # so 0.80 is the starting point — tune from the [RAG] score logs. 0 disables.
+    # Floor for the DENSE arm of the hybrid search (applied as score_threshold
+    # on the dense prefetch). e5 scores cluster high (unrelated ≈ 0.70–0.78,
+    # related ≈ 0.83+), so 0.80 is the starting point. BM25 hits bypass it by
+    # design — exact keyword matches should survive even with low cosine
+    # similarity. 0 disables.
     min_score: float = 0.80
+    # Language for the BM25 sparse encoder (stemmer + stopwords).
+    bm25_language: str = "german"
+    # Rewrite follow-up questions into standalone search queries via the chat
+    # LLM before retrieval. Kill-switch: set false to embed the raw message.
+    query_rewrite: bool = True
     chunk_size: int = 800
     chunk_overlap: int = 100
     top_k: int = 5

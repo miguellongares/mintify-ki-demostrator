@@ -7,11 +7,15 @@ from app.services.llm_client import LLMClient
 from app.services.owui_auth import OwuiAuth
 from app.services.owui_client import OWUIClient
 from app.services.personal_docs import PersonalDocsStore
+from app.services.query_rewriter import QueryRewriter
 from app.services.retriever import Retriever
+from app.services.sparse_embedder import SparseEmbedder
 from app.services.tts_client import Qwen3TTSClient, TTSClient
 from app.services.web_search import WebSearcher
 
 _embedder: Embedder | None = None
+_sparse_embedder: SparseEmbedder | None = None
+_query_rewriter: QueryRewriter | None = None
 _retriever: Retriever | None = None
 _indexer: Indexer | None = None
 _owui_client: OWUIClient | None = None
@@ -25,7 +29,8 @@ _extractor: Extractor | None = None
 
 #
 def init_singletons(qdrant_client):
-    global _embedder, _retriever, _indexer, _llm_client, _judge_client, _tts_client
+    global _embedder, _sparse_embedder, _query_rewriter, _retriever, _indexer
+    global _llm_client, _judge_client, _tts_client
     global _owui_client, _web_searcher, _personal_docs, _owui_auth, _extractor
 
     _embedder = Embedder(
@@ -33,12 +38,14 @@ def init_singletons(qdrant_client):
         settings.embedding_query_prefix,
         settings.embedding_passage_prefix,
     )
+    _sparse_embedder = SparseEmbedder(settings.bm25_language)
     _retriever = Retriever(qdrant_client, settings.collection_name, settings.min_score)
     _owui_client = OWUIClient(settings.owui_base_url, settings.owui_api_key)
-    _indexer = Indexer(_embedder, qdrant_client, settings, _owui_client)
+    _indexer = Indexer(_embedder, _sparse_embedder, qdrant_client, settings, _owui_client)
 
     _llm_client = LLMClient(settings.vllm_urls)
     _llm_client.refresh_model_map()
+    _query_rewriter = QueryRewriter(_llm_client, enabled=settings.query_rewrite)
     # Ensures the Qdrant collection exists and loads known files from it.
     # Does NOT call OWUI (it may not be up yet) — ingestion is driven by the
     # OWUI webhook (POST /api/index) and the /api/sync backfill.
@@ -76,6 +83,14 @@ def get_settings() -> Settings:
 
 def get_embedder() -> Embedder:
     return _embedder
+
+
+def get_sparse_embedder() -> SparseEmbedder:
+    return _sparse_embedder
+
+
+def get_query_rewriter() -> QueryRewriter:
+    return _query_rewriter
 
 
 def get_retriever() -> Retriever:
