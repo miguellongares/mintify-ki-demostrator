@@ -57,10 +57,13 @@ def init_singletons(qdrant_client):
         searxng_url=settings.searxng_url,
         user_agent=settings.web_user_agent,
         num_results=settings.web_search_results,
+        candidates=settings.web_search_candidates,
         fetch_timeout=settings.web_fetch_timeout,
         per_doc_chars=settings.web_doc_char_cap,
         total_chars=settings.web_total_char_cap,
         min_doc_chars=settings.web_min_doc_chars,
+        min_relevance=settings.web_min_relevance,
+        embedder=_embedder,
     )
     print(f"[RAG] WebSearcher → {settings.searxng_url}")
 

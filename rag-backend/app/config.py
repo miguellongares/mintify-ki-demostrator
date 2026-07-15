@@ -47,11 +47,16 @@ class Settings(BaseSettings):
     # The pipeline forwards web_search=True + the query when the user enables 🌐.
     # We query SearXNG, fetch the top-N pages, and extract clean article text.
     searxng_url: str = "http://searxng:8080"
-    web_search_results: int = 4          # top-N SearXNG hits to fetch
+    web_search_results: int = 4          # sources injected into the prompt
+    web_search_candidates: int = 10      # SearXNG hits fetched (over-fetch: 403s and junk pages don't cost a slot)
     web_fetch_timeout: float = 8.0       # seconds per SearXNG query / page fetch
     web_doc_char_cap: int = 4000         # max chars kept per page
     web_total_char_cap: int = 16000      # max chars across all pages
     web_min_doc_chars: int = 120         # below this → fall back to SearXNG snippet
+    # Cosine floor (e5 query↔passage) a fetched page must reach against the web
+    # query to be injected — filters pages that matched the search engine but
+    # not the question. 0 disables.
+    web_min_relevance: float = 0.78
     web_user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
