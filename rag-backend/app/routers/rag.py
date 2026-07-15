@@ -20,6 +20,7 @@ from app.dependencies import (
     get_sparse_embedder,
     get_web_searcher,
 )
+from app.services.dates import today_german
 from app.services.embedder import Embedder
 from app.services.llm_client import LLMClient
 from app.services.query_rewriter import QueryRewriter
@@ -38,7 +39,7 @@ DEFAULT_CONTEXT_BLOCK = "\n\n[KONTEXT]\n{context}\n[/KONTEXT]\n"
 WEB_CONTEXT_BLOCK = (
     "\n\n[WEB-RECHERCHE]\n"
     "Die folgenden Auszüge stammen aus einer aktuellen Internet-Suche "
-    "(Stand: heute). Sie sind aktueller als dein Trainingswissen — stütze deine "
+    "(Stand: {date}). Sie sind aktueller als dein Trainingswissen — stütze deine "
     "Antwort darauf und zitiere die genutzten Quellen als [Quelle N].\n\n"
     "{web}\n[/WEB-RECHERCHE]\n"
 )
@@ -104,9 +105,18 @@ async def pipe(
     print(f"[RAG] file_ids: {req.file_ids} | user_id: {req.user_id} | web_search: {req.web_search}")
 
     # Web search (SearXNG + trafilatura) — only when the user enabled 🌐.
+    # The raw message is first turned into a standalone search query: pronouns
+    # and relative dates ("das Spiel", "gestern") resolved against the chat
+    # history and today's date — searching the literal chat message returned
+    # only generic landing pages.
     web_results: list[WebResult] = []
     if req.web_search:
-        web_results = web_searcher.search(req.user_message)
+        web_query, time_sensitive = rewriter.rewrite_web(
+            req.user_message, req.messages, req.model_id
+        )
+        web_results = web_searcher.search(
+            web_query, time_range="month" if time_sensitive else None
+        )
         print(f"[RAG] web_search: {len(web_results)} usable sources")
         print(f"\n{'#'*70}\n[RAG] RAW WEB CONTENT RETRIEVED FROM THE INTERNET\n{'#'*70}")
         for i, r in enumerate(web_results, 1):
@@ -155,10 +165,17 @@ async def pipe(
     # Append fresh web-search results, if any. Done after the {context} .format()
     # above; .format() here only fills the {web} placeholder, so braces inside the
     # web text are inserted literally and never re-scanned.
+    today = today_german()
     if web_results:
         web_ctx = _format_web_context(web_results)
         print(f"[RAG] web_search: {len(web_ctx)} chars injected as [WEB-RECHERCHE]")
-        enriched_system = enriched_system.rstrip() + WEB_CONTEXT_BLOCK.format(web=web_ctx)
+        enriched_system = enriched_system.rstrip() + WEB_CONTEXT_BLOCK.format(
+            web=web_ctx, date=today
+        )
+
+    # Ground the model in the actual current date — without this it guesses
+    # from its training data ("heute" in prompts meant nothing).
+    enriched_system = f"Aktuelles Datum: {today}.\n\n{enriched_system}"
 
     enriched = [{"role": "system", "content": enriched_system}]
     enriched += [m for m in req.messages if m.get("role") != "system"]

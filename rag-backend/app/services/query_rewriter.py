@@ -22,6 +22,7 @@ because of the rewriter.
 
 import re
 
+from app.services.dates import today_german
 from app.services.llm_client import LLMClient
 
 _REWRITE_PROMPT = """\
@@ -44,6 +45,26 @@ Letzte Nutzernachricht: {question}
 
 Antworte NUR mit der Suchanfrage — eine Zeile, kein Erklärtext, keine \
 Anführungszeichen."""
+
+_WEB_REWRITE_PROMPT = """\
+Du hilfst einer Internet-Suchmaschine. Formuliere die LETZTE Nutzernachricht in \
+EINE eigenständige deutsche Websuchanfrage um:
+1. Löse Pronomen und Verweise ("das Spiel", "es", "dort") mithilfe des \
+Gesprächsverlaufs auf — nenne die konkreten Namen, Orte und Ereignisse.
+2. Heute ist {today}. Ersetze relative Zeitangaben ("gestern", "letzte Woche") \
+durch das konkrete Datum oder den Namen des Ereignisses aus dem Gesprächsverlauf.
+3. Formuliere kurz und stichwortartig wie eine gute Suchmaschinenanfrage — \
+keine Füllwörter, keine ganzen Sätze.
+
+Gesprächsverlauf:
+{history}
+
+Letzte Nutzernachricht: {question}
+
+Antworte in GENAU diesem Format (zwei Zeilen, kein weiterer Text):
+SUCHE: <die Suchanfrage>
+AKTUELL: ja oder nein — "ja" wenn die Antwort von aktuellen Ereignissen \
+abhängt (Ergebnisse, Nachrichten, Preise, Termine), sonst "nein"."""
 
 # Number of trailing chat messages given to the rewriter and per-message cap —
 # enough to resolve references without paying for the whole conversation.
@@ -94,6 +115,50 @@ class QueryRewriter:
             return user_message
         print(f"[RAG] rewrite: {user_message!r} -> {rewritten!r}")
         return rewritten
+
+    def rewrite_web(
+        self, user_message: str, messages: list[dict], model_id: str
+    ) -> tuple[str, bool]:
+        """Return (standalone web search query, is_time_sensitive) for
+        user_message. Falls back to (user_message, False) whenever rewriting
+        is disabled or anything fails — web search must never break here."""
+        if not self._enabled:
+            return user_message, False
+
+        history = self._history_lines(user_message, messages)
+
+        try:
+            raw = self._llm.complete(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _WEB_REWRITE_PROMPT.format(
+                            today=today_german(),
+                            history="\n".join(history) or "(keine — erste Nachricht)",
+                            question=user_message,
+                        ),
+                    }
+                ],
+                model=model_id,
+                temperature=0.0,
+                max_tokens=400,
+            )
+        except Exception as e:
+            print(f"[RAG] Web query rewrite failed ({e}) — using the raw message.")
+            return user_message, False
+
+        text = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+        if "<think>" in text:  # ran out of tokens mid-thought
+            return user_message, False
+        q = re.search(r"SUCHE:\s*(.+)", text)
+        query = q.group(1).strip().strip("\"'„“ ") if q else ""
+        if not query:
+            print("[RAG] Web query rewrite returned nothing usable — using the raw message.")
+            return user_message, False
+        a = re.search(r"AKTUELL:\s*(ja|nein)", text, flags=re.IGNORECASE)
+        recent = bool(a and a.group(1).lower() == "ja")
+        print(f"[RAG] web rewrite: {user_message!r} -> {query!r} (aktuell={recent})")
+        return query, recent
 
     @staticmethod
     def _history_lines(user_message: str, messages: list[dict]) -> list[str]:
