@@ -1249,7 +1249,8 @@
 				const userMsg = [...msgList].reverse().find((m) => m.role === 'user')?.content ?? '';
 				judgementPaneComponent.requestJudge(
 					userMsg,
-					removeDetails(message.content, ['reasoning'])
+					removeDetails(message.content, ['reasoning']),
+					$chatId
 				);
 			}
 		}

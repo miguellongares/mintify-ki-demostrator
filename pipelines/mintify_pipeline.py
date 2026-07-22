@@ -130,6 +130,16 @@ def _extract_user_id(body: dict) -> str | None:
     return None
 
 
+def _extract_chat_id(body: dict) -> str | None:
+    """OWUI chat id (body.metadata.chat_id). The rag-backend caches this turn's
+    retrieval/web context under it so the Bewertung judges can grade against the
+    same sources."""
+    meta = body.get("metadata") if isinstance(body, dict) else None
+    if isinstance(meta, dict) and meta.get("chat_id"):
+        return str(meta["chat_id"])
+    return None
+
+
 def _web_search_enabled(body: dict) -> bool:
     """True when the user toggled 🌐 web search for this turn.
 
@@ -297,6 +307,7 @@ class Pipeline:
             "top_k": self.valves.TOP_K,
             "file_ids": file_ids,
             "user_id": _extract_user_id(body),
+            "chat_id": _extract_chat_id(body),
             "web_search": web_search,
             "thinking": thinking,
         }

@@ -20,6 +20,7 @@ from app.dependencies import (
     get_sparse_embedder,
     get_web_searcher,
 )
+from app.services import context_cache
 from app.services.dates import today_german
 from app.services.embedder import Embedder
 from app.services.llm_client import LLMClient
@@ -76,6 +77,10 @@ class PipeRequest(BaseModel):
     # OWUI user id of the person chatting (from body.metadata in the pipeline).
     # Lets retrieval include the caller's OWN personal files (and only theirs).
     user_id: str | None = None
+    # OWUI chat id — used to cache the context this answer was built from so the
+    # Bewertung judges (POST /api/judge, a separate browser call) can grade the
+    # answer against the same sources instead of their own knowledge.
+    chat_id: str | None = None
     # True when the user enabled 🌐 for this turn → the backend runs SearXNG +
     # trafilatura over user_message and injects the results.
     web_search: bool = False
@@ -176,6 +181,16 @@ async def pipe(
         enriched_system = enriched_system.rstrip() + WEB_CONTEXT_BLOCK.format(
             web=web_ctx, date=today
         )
+
+    # Remember what this answer was built from, keyed by chat, so the Bewertung
+    # judges can grade it against the SAME sources (they run on a separate
+    # browser call that otherwise has no context). See services/context_cache.py.
+    context_cache.store(
+        req.chat_id,
+        context=context,
+        web=(web_ctx if web_results else ""),
+        question=req.user_message,
+    )
 
     # Ground the model in the actual current date — without this it guesses
     # from its training data ("heute" in prompts meant nothing).
