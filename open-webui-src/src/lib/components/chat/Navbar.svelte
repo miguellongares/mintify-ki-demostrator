@@ -10,7 +10,6 @@
 		mobile,
 		settings,
 		showArchivedChats,
-		showControls,
 		showJudgement,
 		showSidebar,
 		temporaryChatEnabled,
@@ -27,10 +26,8 @@
 	import Menu from '$lib/components/layout/Navbar/Menu.svelte';
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import MenuLines from '../icons/MenuLines.svelte';
-	import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
 	import Scale from '../icons/Scale.svelte';
 
-	import PencilSquare from '../icons/PencilSquare.svelte';
 	import Banner from '../common/Banner.svelte';
 
 	const i18n = getContext('i18n');
@@ -132,54 +129,19 @@
 						</Menu>
 					{/if}
 
-					<Tooltip content={$i18n.t('Controls')}>
+					<Tooltip content="Richter-Modus">
 						<button
-							class=" flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"
-							on:click={async () => {
-								await showControls.set(!$showControls);
-							}}
-							aria-label="Controls"
-						>
-							<div class=" m-auto self-center">
-								<AdjustmentsHorizontal className=" size-5" strokeWidth="0.5" />
-							</div>
-						</button>
-					</Tooltip>
-
-					<Tooltip content="Judgement-Modus">
-						<button
-							class=" flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition {$showJudgement
-								? 'bg-gray-100 dark:bg-gray-800'
-								: ''}"
+							class="flex items-center gap-2 cursor-pointer px-3 py-1.5 mr-1 rounded-full border font-medium transition {$showJudgement
+								? 'bg-mintify-green border-mintify-green-dark text-mintify-blue-dark hover:bg-mintify-green-dark'
+								: 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}"
 							on:click={async () => {
 								await showJudgement.set(!$showJudgement);
 							}}
-							aria-label="Judgement Mode"
+							aria-label="Richter-Modus"
+							aria-pressed={$showJudgement}
 						>
-							<div
-								class="m-auto self-center {$showJudgement
-									? 'text-blue-600 dark:text-blue-400'
-									: 'text-gray-600 dark:text-gray-400'}"
-							>
-								<Scale className="size-5" />
-							</div>
-						</button>
-					</Tooltip>
-
-					<Tooltip content={$i18n.t('New Chat')}>
-						<button
-							id="new-chat-button"
-							class=" flex {$showSidebar
-								? 'md:hidden'
-								: ''} cursor-pointer px-2 py-2 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-850 transition"
-							on:click={() => {
-								initNewChat();
-							}}
-							aria-label="New Chat"
-						>
-							<div class=" m-auto self-center">
-								<PencilSquare className=" size-5" strokeWidth="2" />
-							</div>
+							<Scale className="size-5 shrink-0" />
+							<span class="text-sm whitespace-nowrap">Richter Modus</span>
 						</button>
 					</Tooltip>
 
