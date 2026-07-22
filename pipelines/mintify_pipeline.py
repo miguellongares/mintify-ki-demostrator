@@ -142,6 +142,18 @@ def _web_search_enabled(body: dict) -> bool:
     return bool(feats.get("web_search")) if isinstance(feats, dict) else False
 
 
+def _thinking_enabled(body: dict) -> bool:
+    """True when the user toggled 💡 "Nachdenken" for this turn.
+
+    OWUI forwards the whole features dict verbatim into body.metadata.features
+    (main.py), so this custom flag rides alongside web_search. The rag-backend
+    turns it into Qwen3.5's enable_thinking chat-template kwarg.
+    """
+    meta = body.get("metadata") if isinstance(body, dict) else None
+    feats = meta.get("features") if isinstance(meta, dict) else None
+    return bool(feats.get("thinking")) if isinstance(feats, dict) else False
+
+
 def _log_payload(path: str, payload: dict) -> None:
     """Print the outgoing payload in a compact, readable way before _stream().
 
@@ -241,6 +253,8 @@ class Pipeline:
         file_ids = _extract_file_ids(body, messages)
         # 🌐 toggle → the rag-backend runs SearXNG + trafilatura over clean_msg.
         web_search = _web_search_enabled(body)
+        # 💡 toggle → the rag-backend enables Qwen3.5 thinking for this turn.
+        thinking = _thinking_enabled(body)
 
         # Drop OWUI's <source>-injected user turn from history too — keep only the
         # clean text. Same regex on every prior user message.
@@ -284,6 +298,7 @@ class Pipeline:
             "file_ids": file_ids,
             "user_id": _extract_user_id(body),
             "web_search": web_search,
+            "thinking": thinking,
         }
 
         _log_payload("/api/pipe", payload)

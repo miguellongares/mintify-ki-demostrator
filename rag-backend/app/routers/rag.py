@@ -79,6 +79,10 @@ class PipeRequest(BaseModel):
     # True when the user enabled 🌐 for this turn → the backend runs SearXNG +
     # trafilatura over user_message and injects the results.
     web_search: bool = False
+    # True when the user enabled 💡 "Nachdenken" → the model reflects first
+    # (Qwen3.5 chat_template_kwargs.enable_thinking); the <think> block is streamed
+    # back as a collapsible "Gedankengang" section.
+    thinking: bool = False
 
 
 class PassthroughRequest(BaseModel):
@@ -102,7 +106,7 @@ async def pipe(
     print(f"[RAG] pipe() called")
     print(f"[RAG] user_message: {repr(req.user_message[:200])}")
     print(f"[RAG] model_id: {req.model_id}")
-    print(f"[RAG] file_ids: {req.file_ids} | user_id: {req.user_id} | web_search: {req.web_search}")
+    print(f"[RAG] file_ids: {req.file_ids} | user_id: {req.user_id} | web_search: {req.web_search} | thinking: {req.thinking}")
 
     # Web search (SearXNG + trafilatura) — only when the user enabled 🌐.
     # The raw message is first turned into a standalone search query: pronouns
@@ -184,7 +188,9 @@ async def pipe(
     print(f"{'='*60}\n")
 
     def token_generator():
-        yield from llm.stream(enriched, req.model_id, req.temperature)
+        yield from llm.stream(
+            enriched, req.model_id, req.temperature, enable_thinking=req.thinking
+        )
         # Always show the user which pages were used (the model may or may not cite).
         if web_results:
             yield _quellen_footer(web_results)
