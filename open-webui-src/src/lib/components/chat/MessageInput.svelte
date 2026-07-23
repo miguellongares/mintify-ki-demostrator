@@ -50,6 +50,7 @@
 	import PhotoSolid from '../icons/PhotoSolid.svelte';
 	import Photo from '../icons/Photo.svelte';
 	import CommandLine from '../icons/CommandLine.svelte';
+	import LightBulb from '../icons/LightBlub.svelte';
 	import { KokoroWorker } from '$lib/workers/KokoroWorker';
 	import ToolServersModal from './ToolServersModal.svelte';
 	import Wrench from '../icons/Wrench.svelte';
@@ -83,13 +84,15 @@
 	export let imageGenerationEnabled = false;
 	export let webSearchEnabled = false;
 	export let codeInterpreterEnabled = false;
+	export let thinkingEnabled = false;
 
 	$: onChange({
 		prompt,
 		files,
 		selectedToolIds,
 		imageGenerationEnabled,
-		webSearchEnabled
+		webSearchEnabled,
+		thinkingEnabled
 	});
 
 	let showTools = false;
@@ -775,6 +778,7 @@
 														selectedToolIds = [];
 														webSearchEnabled = false;
 														imageGenerationEnabled = false;
+														thinkingEnabled = false;
 													}
 												}}
 												on:paste={async (e) => {
@@ -982,6 +986,7 @@
 													selectedToolIds = [];
 													webSearchEnabled = false;
 													imageGenerationEnabled = false;
+													thinkingEnabled = false;
 												}
 											}}
 											rows="1"
@@ -1185,6 +1190,22 @@
 														</button>
 													</Tooltip>
 												{/if}
+
+												<Tooltip content={$i18n.t('Reflect before answering')} placement="top">
+													<button
+														on:click|preventDefault={() => (thinkingEnabled = !thinkingEnabled)}
+														type="button"
+														class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {thinkingEnabled
+															? 'bg-blue-100 dark:bg-blue-500/20 border-blue-400/20 text-blue-500 dark:text-blue-400'
+															: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+													>
+														<LightBulb className="size-5" strokeWidth="1.75" />
+														<span
+															class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
+															>{$i18n.t('Reasoning')}</span
+														>
+													</button>
+												</Tooltip>
 											{/if}
 										</div>
 									</div>

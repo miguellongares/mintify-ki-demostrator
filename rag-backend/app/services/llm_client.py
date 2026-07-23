@@ -24,6 +24,23 @@ import httpx
 from openai import OpenAI
 
 
+def _reasoning_block(text: str) -> str:
+    """Wrap the model's reflection in a closed <details type="reasoning"> block.
+
+    The OWUI markdown renderer turns this into a collapsed "Gedankengang" section,
+    and removeDetails(..., ['reasoning']) strips it before TTS reads or the judges
+    rate the answer. Must be emitted fully closed in one go — the marked `details`
+    tokenizer only fires once the matching </details> is present.
+    """
+    text = text.strip()
+    return (
+        '<details type="reasoning">\n'
+        '<summary>Gedankengang</summary>\n'
+        f'{text}\n'
+        '</details>\n\n'
+    )
+
+
 class LLMClient:
     def __init__(self, vllm_urls: list[str]):
         # List of vLLM base URLs (without /v1), e.g. ["http://host.docker.internal:8002"]
@@ -94,12 +111,27 @@ class LLMClient:
         )  # type: ignore
         return completion.choices[0].message.content or ""
 
-    def stream(self, messages: list[dict], model: str, temperature: float) -> Generator[str, None, None]:
+    def stream(
+        self,
+        messages: list[dict],
+        model: str,
+        temperature: float,
+        enable_thinking: bool = False,
+    ) -> Generator[str, None, None]:
         """
         Send an OpenAI-compatible chat completion request to vLLM and stream back tokens.
+
+        When ``enable_thinking`` is True the 💡 "Nachdenken" toggle is on: we tell the
+        Qwen3.5 chat template to reflect first (``chat_template_kwargs.enable_thinking``).
+        vLLM is launched with ``--reasoning-parser qwen3`` (thinking off by default), so
+        the model's <think> block arrives on a separate delta field (``reasoning`` on
+        vLLM 0.19.x, ``reasoning_content`` on older builds) apart from the answer in
+        ``delta.content``. We buffer the reasoning and, once the answer begins,
+        emit it once as a collapsed ``<details type="reasoning">`` block (rendered as the
+        "Gedankengang" section in the UI; TTS/judge strip it via removeDetails).
         """
         debug = True
-        #For debug purpose: 
+        #For debug purpose:
         if debug == True:
             for num, message in enumerate(messages):
                 print(f'------Message {num+1}-------')
@@ -114,11 +146,40 @@ class LLMClient:
                 messages=messages,
                 stream=True,          # request SSE streaming
                 temperature=temperature,
+                # vLLM extension: override the server's default enable_thinking:false.
+                extra_body={"chat_template_kwargs": {"enable_thinking": enable_thinking}},
             ) # type: ignore
+            reasoning_parts: list[str] = []
+            reasoning_flushed = False
             for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta       # plain text token, streamed back to the router
+                delta = chunk.choices[0].delta
+                if enable_thinking:
+                    # vLLM streams the reflection on a separate, non-OpenAI delta field.
+                    # The field NAME changed across vLLM versions: 0.19.x (serving the
+                    # Qwen3.5 hybrid model) uses `reasoning`; older builds used
+                    # `reasoning_content`. Since neither is in the OpenAI schema, the SDK
+                    # exposes it as an attribute OR tucks it in model_extra depending on
+                    # version — so we probe both names on both surfaces.
+                    extra = getattr(delta, "model_extra", None) or {}
+                    reasoning = None
+                    for field in ("reasoning", "reasoning_content"):
+                        reasoning = getattr(delta, field, None) or extra.get(field)
+                        if reasoning:
+                            break
+                    if reasoning:
+                        reasoning_parts.append(reasoning)
+                content = delta.content
+                if content:
+                    # Answer started → the thinking phase is over: flush it as one
+                    # complete (closed) details block so the markdown renderer picks
+                    # it up as a collapsible section.
+                    if reasoning_parts and not reasoning_flushed:
+                        yield _reasoning_block("".join(reasoning_parts))
+                        reasoning_flushed = True
+                    yield content     # plain text token, streamed back to the router
+            # Model reflected but produced no answer content (rare) — still show it.
+            if reasoning_parts and not reasoning_flushed:
+                yield _reasoning_block("".join(reasoning_parts))
         except Exception as e:
             print(f"[RAG] ERROR in LLMClient.stream (url={url}, model={model}): {e}")
             # Yield a visible German error message so the user sees feedback in the chat

@@ -6,7 +6,7 @@
 	let judgeResults: JudgeResult[] | null = null;
 	let judgeLoading = false;
 
-	export const requestJudge = async (query: string, answer: string) => {
+	export const requestJudge = async (query: string, answer: string, chatId?: string) => {
 		judgeLoading = true;
 		judgeResults = null;
 		try {
@@ -16,7 +16,7 @@
 			const resp = await fetch(judgeUrl, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query, answer })
+				body: JSON.stringify({ query, answer, chat_id: chatId })
 			});
 			if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 			const data = await resp.json();

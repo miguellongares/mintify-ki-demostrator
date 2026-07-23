@@ -125,6 +125,7 @@
 	let imageGenerationEnabled = false;
 	let webSearchEnabled = false;
 	let codeInterpreterEnabled = false;
+	let thinkingEnabled = false;
 
 	let chat = null;
 	let tags = [];
@@ -152,6 +153,7 @@
 			selectedToolIds = [];
 			webSearchEnabled = false;
 			imageGenerationEnabled = false;
+			thinkingEnabled = false;
 
 			if (chatIdProp && (await loadChat())) {
 				await tick();
@@ -166,6 +168,7 @@
 						selectedToolIds = input.selectedToolIds;
 						webSearchEnabled = input.webSearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
+						thinkingEnabled = input.thinkingEnabled;
 					} catch (e) {}
 				}
 
@@ -425,12 +428,14 @@
 				selectedToolIds = input.selectedToolIds;
 				webSearchEnabled = input.webSearchEnabled;
 				imageGenerationEnabled = input.imageGenerationEnabled;
+				thinkingEnabled = input.thinkingEnabled;
 			} catch (e) {
 				prompt = '';
 				files = [];
 				selectedToolIds = [];
 				webSearchEnabled = false;
 				imageGenerationEnabled = false;
+				thinkingEnabled = false;
 			}
 		}
 
@@ -1242,7 +1247,11 @@
 			if ($showJudgement && judgementPaneComponent) {
 				const msgList = createMessagesList(history, message.id);
 				const userMsg = [...msgList].reverse().find((m) => m.role === 'user')?.content ?? '';
-				judgementPaneComponent.requestJudge(userMsg, message.content);
+				judgementPaneComponent.requestJudge(
+					userMsg,
+					removeDetails(message.content, ['reasoning']),
+					$chatId
+				);
 			}
 		}
 
@@ -1618,7 +1627,10 @@
 						$config?.features?.enable_web_search &&
 						($user?.role === 'admin' || $user?.permissions?.features?.web_search)
 							? webSearchEnabled || ($settings?.webSearch ?? false) === 'always'
-							: false
+							: false,
+					// MINTIFY: 💡 Nachdenken — no server config/permission gate; the
+					// rag-backend maps this to Qwen3.5's enable_thinking for the turn.
+					thinking: thinkingEnabled
 				},
 				variables: {
 					...getPromptVariables(
@@ -2048,6 +2060,7 @@
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled
+								bind:thinkingEnabled
 								bind:atSelectedModel
 								toolServers={$toolServers}
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
@@ -2101,6 +2114,7 @@
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled
+								bind:thinkingEnabled
 								bind:atSelectedModel
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
 								toolServers={$toolServers}

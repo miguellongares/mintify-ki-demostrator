@@ -20,6 +20,7 @@ from app.dependencies import (
     get_sparse_embedder,
     get_web_searcher,
 )
+from app.services import context_cache
 from app.services.dates import today_german
 from app.services.embedder import Embedder
 from app.services.llm_client import LLMClient
@@ -76,9 +77,17 @@ class PipeRequest(BaseModel):
     # OWUI user id of the person chatting (from body.metadata in the pipeline).
     # Lets retrieval include the caller's OWN personal files (and only theirs).
     user_id: str | None = None
+    # OWUI chat id — used to cache the context this answer was built from so the
+    # Bewertung judges (POST /api/judge, a separate browser call) can grade the
+    # answer against the same sources instead of their own knowledge.
+    chat_id: str | None = None
     # True when the user enabled 🌐 for this turn → the backend runs SearXNG +
     # trafilatura over user_message and injects the results.
     web_search: bool = False
+    # True when the user enabled 💡 "Nachdenken" → the model reflects first
+    # (Qwen3.5 chat_template_kwargs.enable_thinking); the <think> block is streamed
+    # back as a collapsible "Gedankengang" section.
+    thinking: bool = False
 
 
 class PassthroughRequest(BaseModel):
@@ -102,7 +111,7 @@ async def pipe(
     print(f"[RAG] pipe() called")
     print(f"[RAG] user_message: {repr(req.user_message[:200])}")
     print(f"[RAG] model_id: {req.model_id}")
-    print(f"[RAG] file_ids: {req.file_ids} | user_id: {req.user_id} | web_search: {req.web_search}")
+    print(f"[RAG] file_ids: {req.file_ids} | user_id: {req.user_id} | web_search: {req.web_search} | thinking: {req.thinking}")
 
     # Web search (SearXNG + trafilatura) — only when the user enabled 🌐.
     # The raw message is first turned into a standalone search query: pronouns
@@ -173,6 +182,16 @@ async def pipe(
             web=web_ctx, date=today
         )
 
+    # Remember what this answer was built from, keyed by chat, so the Bewertung
+    # judges can grade it against the SAME sources (they run on a separate
+    # browser call that otherwise has no context). See services/context_cache.py.
+    context_cache.store(
+        req.chat_id,
+        context=context,
+        web=(web_ctx if web_results else ""),
+        question=req.user_message,
+    )
+
     # Ground the model in the actual current date — without this it guesses
     # from its training data ("heute" in prompts meant nothing).
     enriched_system = f"Aktuelles Datum: {today}.\n\n{enriched_system}"
@@ -184,7 +203,9 @@ async def pipe(
     print(f"{'='*60}\n")
 
     def token_generator():
-        yield from llm.stream(enriched, req.model_id, req.temperature)
+        yield from llm.stream(
+            enriched, req.model_id, req.temperature, enable_thinking=req.thinking
+        )
         # Always show the user which pages were used (the model may or may not cite).
         if web_results:
             yield _quellen_footer(web_results)

@@ -5,9 +5,50 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
 from openai import OpenAI
 
-_JUDGE_PROMPT = """\
+# Used when /api/pipe cached the sources this answer was built from (documents
+# and/or a live web search). The context is the ground truth — the judge must
+# NOT rely on its own training knowledge, which is older than the web results
+# and does not contain the user's private documents. This is the fix for judges
+# rating correct, grounded answers as "schlecht" because they couldn't verify
+# facts they had never seen.
+_JUDGE_PROMPT_WITH_CONTEXT = """\
 Du bist ein unabhängiger Bewertungs-Assistent für ein Finanzbildungssystem.
-Bewerte die folgende Antwort auf die Nutzerfrage.
+Dir liegen die Nutzerfrage, die Antwort des Systems und der KONTEXT vor, auf dem
+die Antwort beruht (Auszüge aus hinterlegten Dokumenten und/oder einer aktuellen
+Internet-Recherche).
+
+WICHTIG: Der KONTEXT ist deine EINZIGE Wahrheitsquelle. Er kann aktueller sein
+als dein Trainingswissen und enthält Informationen, die du nicht kennst.
+Bewerte NIEMALS als "schlecht", nur weil du eine Aussage selbst nicht kennst
+oder nicht verifizieren kannst — prüfe ausschließlich gegen den Kontext.
+
+[KONTEXT]
+{context}
+[/KONTEXT]
+
+Nutzerfrage: {query}
+
+Antwort: {answer}
+
+Bewerte nach: (1) Belegtheit — wird die Antwort vom Kontext gestützt und
+widerspricht ihm nicht? (2) Relevanz — beantwortet sie die Frage? (3) Klarheit.
+
+Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Text davor/danach):
+{{"rating": "gut" | "mittel" | "schlecht", "reasoning": "<1-2 konkrete Sätze, nenne den ausschlaggebenden Punkt>"}}
+
+Kriterien:
+- gut: durch den Kontext gestützt, beantwortet die Frage, klar formuliert
+- mittel: überwiegend gestützt, aber unvollständig oder in Teilen unbelegt
+- schlecht: widerspricht dem Kontext, geht an der Frage vorbei oder ist irreführend\
+"""
+
+# Fallback when no context was cached (pure model answer — no documents, no web,
+# or a cache miss). Judge general quality and stay lenient: an answer the judge
+# simply cannot fact-check is not automatically "schlecht".
+_JUDGE_PROMPT_NO_CONTEXT = """\
+Du bist ein unabhängiger Bewertungs-Assistent für ein Finanzbildungssystem.
+Für diese Antwort liegen keine Quelldokumente vor. Bewerte die allgemeine
+Qualität der Antwort auf die Nutzerfrage.
 
 Nutzerfrage: {query}
 
@@ -17,10 +58,16 @@ Antworte NUR mit einem JSON-Objekt (kein Markdown, kein Text davor/danach):
 {{"rating": "gut" | "mittel" | "schlecht", "reasoning": "<1-2 Sätze>"}}
 
 Kriterien:
-- gut: Antwort ist korrekt, vollständig und klar
-- mittel: Antwort ist teilweise korrekt oder unvollständig
-- schlecht: Antwort ist falsch, irreführend oder nicht hilfreich\
+- gut: hilfreich, plausibel, klar und beantwortet die Frage
+- mittel: teilweise hilfreich oder unvollständig
+- schlecht: nur wenn die Antwort klar falsch, irreführend oder am Thema vorbei ist
+Markiere NICHT als "schlecht", nur weil du einzelne Aussagen nicht selbst
+verifizieren kannst.\
 """
+
+# Judges run within the 16k-token model window alongside the answer; cap the
+# injected context so 3 parallel calls stay fast and never overflow.
+_MAX_CONTEXT_CHARS = 12000
 
 
 class JudgeClient:
@@ -46,22 +93,30 @@ class JudgeClient:
             print(f"[Judge] Could not fetch model from {self._url}: {e}", flush=True)
         return "default"
 
-    def judge(self, judge_index: int, query: str, answer: str) -> dict:
+    def judge(self, judge_index: int, query: str, answer: str, context: str = "") -> dict:
         model = self._resolve_model()
         client = OpenAI(base_url=f"{self._url}/v1", api_key="vllm")
         t0 = time.time()
-        print(f"[Judge] Judge-{judge_index} starting (model={model}) ...", flush=True)
+        if context:
+            prompt = _JUDGE_PROMPT_WITH_CONTEXT.format(
+                context=context[:_MAX_CONTEXT_CHARS], query=query, answer=answer
+            )
+        else:
+            prompt = _JUDGE_PROMPT_NO_CONTEXT.format(query=query, answer=answer)
+        print(
+            f"[Judge] Judge-{judge_index} starting (model={model}, "
+            f"context={'yes' if context else 'no'}) ...",
+            flush=True,
+        )
         try:
             completion = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": _JUDGE_PROMPT.format(query=query, answer=answer),
-                    }
-                ],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=512,
+                # Judges must return JSON, not reflect — force thinking off
+                # regardless of the vLLM default (see llm_client.py).
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
             raw = completion.choices[0].message.content or ""
             raw = raw.strip()
@@ -82,11 +137,18 @@ class JudgeClient:
             print(f"[Judge] Judge-{judge_index} FAILED after {elapsed:.1f}s: {e}", flush=True)
             return {"rating": "mittel", "reasoning": f"Bewertung fehlgeschlagen: {e}"}
 
-    def judge_all(self, query: str, answer: str) -> list[dict]:
-        print(f"[Judge] Starting 3 parallel judge calls (query={query[:60]!r}) ...", flush=True)
+    def judge_all(self, query: str, answer: str, context: str = "") -> list[dict]:
+        print(
+            f"[Judge] Starting 3 parallel judge calls "
+            f"(query={query[:60]!r}, context_chars={len(context)}) ...",
+            flush=True,
+        )
         t0 = time.time()
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(self.judge, i + 1, query, answer): i for i in range(3)}
+            futures = {
+                executor.submit(self.judge, i + 1, query, answer, context): i
+                for i in range(3)
+            }
             results = [None, None, None]
             for future in as_completed(futures):
                 idx = futures[future]
