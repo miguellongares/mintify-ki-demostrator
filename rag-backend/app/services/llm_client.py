@@ -124,8 +124,9 @@ class LLMClient:
         When ``enable_thinking`` is True the 💡 "Nachdenken" toggle is on: we tell the
         Qwen3.5 chat template to reflect first (``chat_template_kwargs.enable_thinking``).
         vLLM is launched with ``--reasoning-parser qwen3`` (thinking off by default), so
-        the model's <think> block arrives on ``delta.reasoning_content`` separate from the
-        answer in ``delta.content``. We buffer the reasoning and, once the answer begins,
+        the model's <think> block arrives on a separate delta field (``reasoning`` on
+        vLLM 0.19.x, ``reasoning_content`` on older builds) apart from the answer in
+        ``delta.content``. We buffer the reasoning and, once the answer begins,
         emit it once as a collapsed ``<details type="reasoning">`` block (rendered as the
         "Gedankengang" section in the UI; TTS/judge strip it via removeDetails).
         """
@@ -153,13 +154,18 @@ class LLMClient:
             for chunk in stream:
                 delta = chunk.choices[0].delta
                 if enable_thinking:
-                    # reasoning_content is a vLLM-only field; the OpenAI SDK keeps it as
-                    # an attribute or in model_extra depending on version.
-                    reasoning = getattr(delta, "reasoning_content", None)
-                    if reasoning is None:
-                        extra = getattr(delta, "model_extra", None)
-                        if extra:
-                            reasoning = extra.get("reasoning_content")
+                    # vLLM streams the reflection on a separate, non-OpenAI delta field.
+                    # The field NAME changed across vLLM versions: 0.19.x (serving the
+                    # Qwen3.5 hybrid model) uses `reasoning`; older builds used
+                    # `reasoning_content`. Since neither is in the OpenAI schema, the SDK
+                    # exposes it as an attribute OR tucks it in model_extra depending on
+                    # version — so we probe both names on both surfaces.
+                    extra = getattr(delta, "model_extra", None) or {}
+                    reasoning = None
+                    for field in ("reasoning", "reasoning_content"):
+                        reasoning = getattr(delta, field, None) or extra.get(field)
+                        if reasoning:
+                            break
                     if reasoning:
                         reasoning_parts.append(reasoning)
                 content = delta.content
