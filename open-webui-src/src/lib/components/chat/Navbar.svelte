@@ -26,6 +26,7 @@
 	import Menu from '$lib/components/layout/Navbar/Menu.svelte';
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import MenuLines from '../icons/MenuLines.svelte';
+	import PencilSquare from '../icons/PencilSquare.svelte';
 	import Scale from '../icons/Scale.svelte';
 
 	import Banner from '../common/Banner.svelte';
@@ -128,6 +129,30 @@
 							</button>
 						</Menu>
 					{/if}
+
+					<!--
+						Also the target of the sidebar's "Neuer Chat" entry, the model
+						dropdown's temporary-chat toggle and Ctrl+Shift+O — they all
+						reach it via document.getElementById('new-chat-button').click().
+						Keep the id even if the button is hidden (md:hidden still
+						dispatches programmatic clicks).
+					-->
+					<Tooltip content={$i18n.t('New Chat')}>
+						<button
+							id="new-chat-button"
+							class="flex {$showSidebar
+								? 'md:hidden'
+								: ''} cursor-pointer px-2 py-2 mr-1 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"
+							on:click={() => {
+								initNewChat();
+							}}
+							aria-label="New Chat"
+						>
+							<div class=" m-auto self-center">
+								<PencilSquare className=" size-5" strokeWidth="2" />
+							</div>
+						</button>
+					</Tooltip>
 
 					<Tooltip content="Richter-Modus">
 						<button
