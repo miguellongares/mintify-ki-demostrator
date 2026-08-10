@@ -1,3 +1,19 @@
+<script context="module" lang="ts">
+	// Outer height of a dock pill in each mode. The navbar's other buttons
+	// (new chat, Richter Modus, user menu) import these so the whole row stays
+	// flush — if a pill's padding or avatar size changes, update these too.
+	export const DOCK_HEIGHT = {
+		home: 'h-[2.875rem]', // 32px avatar + 2×6px padding + 2×1px border
+		chat: 'h-[2.125rem]' // 24px avatar + 2×4px padding + 2×1px border
+	};
+
+	// Same measurements as a square, for the icon-only buttons next to the dock.
+	export const DOCK_SQUARE = {
+		home: 'size-[2.875rem]',
+		chat: 'size-[2.125rem]'
+	};
+</script>
+
 <script lang="ts">
 	import { models } from '$lib/stores';
 
@@ -24,6 +40,7 @@
 				aria-pressed={active}
 				on:click={() => selectModel(model.id)}
 				class="flex shrink-0 items-center rounded-full border bg-white dark:bg-gray-850 shadow-sm transition-all duration-150 ease-out focus:outline-none whitespace-nowrap
+					{home ? DOCK_HEIGHT.home : DOCK_HEIGHT.chat}
 					{home ? 'gap-2 pl-1.5 pr-3.5 py-1.5' : 'gap-1.5 pl-1 pr-2.5 py-1'}
 					{active
 					? 'border-mintify-green ring-1 ring-mintify-green'
