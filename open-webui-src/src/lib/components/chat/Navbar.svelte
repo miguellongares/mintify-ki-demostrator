@@ -21,11 +21,12 @@
 
 	import ShareChatModal from '../chat/ShareChatModal.svelte';
 	import ModelSelector from '../chat/ModelSelector.svelte';
-	import ModelDock from '../chat/ModelDock.svelte';
+	import ModelDock, { DOCK_HEIGHT, DOCK_SQUARE } from '../chat/ModelDock.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import Menu from '$lib/components/layout/Navbar/Menu.svelte';
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import MenuLines from '../icons/MenuLines.svelte';
+	import PencilSquare from '../icons/PencilSquare.svelte';
 	import Scale from '../icons/Scale.svelte';
 
 	import Banner from '../common/Banner.svelte';
@@ -43,6 +44,12 @@
 
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
+
+	// The model dock renders bigger on the landing screen than inside a chat.
+	// The buttons to its right follow the same two heights so the row stays flush.
+	$: isHome = !history?.currentId && !$chatId;
+	$: navButtonHeight = isHome ? DOCK_HEIGHT.home : DOCK_HEIGHT.chat;
+	$: navButtonSquare = isHome ? DOCK_SQUARE.home : DOCK_SQUARE.chat;
 </script>
 
 <ShareChatModal bind:show={showShareChatModal} chatId={$chatId} />
@@ -86,7 +93,7 @@
 
 				{#if showModelSelector}
 					<div class="hidden md:flex flex-1 justify-center items-center min-w-0 px-2">
-						<ModelDock bind:selectedModels home={!history.currentId && !$chatId} />
+						<ModelDock bind:selectedModels home={isHome} />
 					</div>
 				{/if}
 
@@ -129,9 +136,35 @@
 						</Menu>
 					{/if}
 
+					<!--
+						Also the target of the sidebar's "Neuer Chat" entry, the model
+						dropdown's temporary-chat toggle and Ctrl+Shift+O — they all
+						reach it via document.getElementById('new-chat-button').click().
+						Keep the id even if the button is hidden (md:hidden still
+						dispatches programmatic clicks).
+					-->
+					<Tooltip content={$i18n.t('New Chat')}>
+						<button
+							id="new-chat-button"
+							class="flex items-center justify-center {navButtonSquare} {$showSidebar
+								? 'md:hidden'
+								: ''} cursor-pointer mr-1 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition-all duration-150 ease-out"
+							on:click={() => {
+								initNewChat();
+							}}
+							aria-label="New Chat"
+						>
+							<div class=" m-auto self-center">
+								<PencilSquare className={isHome ? 'size-6' : 'size-5'} strokeWidth="2" />
+							</div>
+						</button>
+					</Tooltip>
+
 					<Tooltip content="Richter-Modus">
 						<button
-							class="flex items-center gap-2 cursor-pointer px-3 py-1.5 mr-1 rounded-full border font-medium transition {$showJudgement
+							class="flex items-center gap-2 cursor-pointer {navButtonHeight} {isHome
+								? 'px-3.5'
+								: 'px-3'} mr-1 rounded-full border font-medium transition-all duration-150 ease-out {$showJudgement
 								? 'bg-mintify-green border-mintify-green-dark text-mintify-blue-dark hover:bg-mintify-green-dark'
 								: 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}"
 							on:click={async () => {
@@ -140,8 +173,9 @@
 							aria-label="Richter-Modus"
 							aria-pressed={$showJudgement}
 						>
-							<Scale className="size-5 shrink-0" />
-							<span class="text-sm whitespace-nowrap">Richter Modus</span>
+							<Scale className="{isHome ? 'size-5' : 'size-4'} shrink-0" />
+							<span class="{isHome ? 'text-sm' : 'text-xs'} whitespace-nowrap">Richter Modus</span
+							>
 						</button>
 					</Tooltip>
 
@@ -156,13 +190,13 @@
 							}}
 						>
 							<button
-								class="select-none flex rounded-xl p-1.5 w-full hover:bg-gray-50 dark:hover:bg-gray-850 transition"
+								class="select-none flex items-center justify-center {navButtonSquare} rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition-all duration-150 ease-out"
 								aria-label="User Menu"
 							>
 								<div class=" self-center">
 									<img
 										src={$user?.profile_image_url}
-										class="size-6 object-cover rounded-full"
+										class="{isHome ? 'size-8' : 'size-6'} object-cover rounded-full"
 										alt="User profile"
 										draggable="false"
 									/>
@@ -177,7 +211,7 @@
 
 	{#if showModelSelector}
 		<div class="md:hidden flex justify-center w-full px-1.5 mt-1 pointer-events-auto">
-			<ModelDock bind:selectedModels home={!history.currentId && !$chatId} />
+			<ModelDock bind:selectedModels home={isHome} />
 		</div>
 	{/if}
 

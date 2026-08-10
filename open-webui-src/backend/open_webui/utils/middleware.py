@@ -97,6 +97,19 @@ log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["MAIN"])
 
 
+# MINTIFY: the title prompt asks for plain text, but the model may still slip an
+# emoji in. Strip them deterministically before the title is persisted.
+EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001f000-\U0001faff"  # pictographs, emoticons, transport, symbols, flags
+    "\u2600-\u27bf"  # misc symbols + dingbats
+    "\u2b00-\u2bff"  # misc symbols and arrows (stars, hearts, etc.)
+    "\ufe0e\ufe0f"  # variation selectors (text / emoji presentation)
+    "\u200d"  # zero-width joiner
+    "]+"
+)
+
+
 async def chat_completion_tools_handler(
     request: Request, body: dict, extra_params: dict, user: UserModel, models, tools
 ) -> tuple[dict, dict]:
@@ -1003,6 +1016,13 @@ async def process_chat_response(
                                 )
                             except Exception as e:
                                 title = ""
+
+                            # MINTIFY: titles are plain text — drop any emoji the
+                            # model added despite the prompt (and the whitespace
+                            # it leaves behind).
+                            title = re.sub(
+                                r"\s+", " ", EMOJI_PATTERN.sub("", title)
+                            ).strip()
 
                             if not title:
                                 title = messages[0].get("content", "New Chat")

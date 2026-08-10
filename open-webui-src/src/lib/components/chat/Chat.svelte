@@ -50,7 +50,8 @@
 		sleep,
 		removeDetails,
 		getPromptVariables,
-		processDetails
+		processDetails,
+		getSelectableModels
 	} from '$lib/utils';
 
 	import { generateChatCompletion } from '$lib/apis/ollama';
@@ -701,10 +702,17 @@
 			}
 		}
 
-		selectedModels = selectedModels.filter((modelId) => $models.map((m) => m.id).includes(modelId));
+		// A new chat starts on a model the picker actually offers. Raw base /
+		// pipeline models are hidden there, so a saved default pointing at one
+		// falls through to the first selectable model instead of leaving the
+		// model dock with nothing selected.
+		const selectableModels = getSelectableModels($models);
+		selectedModels = selectedModels.filter((modelId) =>
+			selectableModels.map((m) => m.id).includes(modelId)
+		);
 		if (selectedModels.length === 0 || (selectedModels.length === 1 && selectedModels[0] === '')) {
-			if ($models.length > 0) {
-				selectedModels = [$models[0].id];
+			if (selectableModels.length > 0) {
+				selectedModels = [selectableModels[0].id];
 			} else {
 				selectedModels = [''];
 			}

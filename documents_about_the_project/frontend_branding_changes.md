@@ -111,6 +111,76 @@ retina). Set it per model in **Workspace → Models → profile image**.
 > gradients, no photographic detail — simple vector-style flat design, legible when
 > scaled down to a tiny circular avatar.
 
+## Chat UI changes (2026-08-10)
+
+Four independent changes — each can be reverted on its own.
+
+### 1. Auto-generated chat titles without emoji
+
+The title the sidebar shows comes from a separate LLM call whose prompt used to
+ask for an emoji ("3-5 word title **with an emoji**", 3 of 6 examples emoji-led).
+
+- `backend/open_webui/config.py` → `DEFAULT_TITLE_GENERATION_PROMPT_TEMPLATE`:
+  dropped "with an emoji", inverted the "Use emojis…" guideline into a ban,
+  removed the emoji from the examples.
+- `backend/open_webui/utils/middleware.py` → `EMOJI_PATTERN` constant + one strip
+  where the title is parsed (~line 1020), so an emoji the model adds anyway never
+  reaches the DB or the `chat:title` socket event.
+- Only affects **new** titles — existing chat titles keep their emoji.
+- ⚠️ The prompt must keep starting with `### Task:` — `pipelines/mintify_pipeline.py`
+  `_is_meta_task()` uses that prefix to route title generation to `/api/passthrough`
+  instead of the full RAG pipe.
+- **Revert:** restore both blocks. (Admin → Settings → Interface → "Title Generation
+  Prompt" also overrides the code default when non-empty.)
+
+### 2. Sidebar "Neuer Chat" button works again
+
+- `src/lib/components/chat/Navbar.svelte` → re-added the button with
+  `id="new-chat-button"` calling `initNewChat()`.
+- Why: the custom chat navbar had dropped it, but `Sidebar.svelte`,
+  `ModelSelector/Selector.svelte` and `routes/(app)/+layout.svelte` all start a new
+  chat via `document.getElementById('new-chat-button').click()`. With no such
+  element the click was a no-op — only the URL changed, the old chat stayed on
+  screen. (The stock `#new-chat-button` still exists in `layout/Navbar.svelte`, but
+  that file is only used by the share route `/s/[id]`.)
+- Visible only when the sidebar is collapsed (`md:hidden` while open) — stock OWUI
+  behaviour; a `display:none` element still receives programmatic clicks.
+- **Revert:** delete the button — the sidebar entry, the temporary-chat toggle and
+  Ctrl+Shift+O stop working again.
+
+### 3. Navbar buttons match the model dock height
+
+- `ModelDock.svelte` → module script exports `DOCK_HEIGHT` / `DOCK_SQUARE`
+  (`2.875rem` on the landing page, `2.125rem` inside a chat = avatar + padding +
+  border) and applies them to the pills — visually a no-op, it just pins the number.
+- `chat/Navbar.svelte` → `isHome` / `navButtonHeight` / `navButtonSquare` drive the
+  New-Chat, "Richter Modus" and user-avatar buttons; icon, avatar and label sizes
+  scale with the mode, all three use the dock's `transition-all duration-150 ease-out`.
+- Shapes kept: Richter Modus stays a `rounded-full` pill, the avatar stays circular.
+  The icon buttons use `size-[…]`, not `aspect-square` — the user button's `w-full`
+  would override an aspect ratio.
+- Not touched: the ☰ sidebar-toggle on the far left is still 36 px.
+- **Revert:** drop the two exports and restore the fixed `px-*` / `py-*` classes.
+
+### 4. Only UI-created models appear in the model bar
+
+- `src/lib/utils/index.ts` → `isUiCreatedModel()` (`preset === true || arena === true`)
+  and `getSelectableModels()` (falls back to the full list if nothing was built in
+  the UI, so the picker is never empty).
+- Applied in `ModelDock.svelte`, `ModelSelector.svelte` (the mobile dropdown) and
+  `Chat.svelte` → `initNewChat()`, which now validates the selection against the
+  filtered list so a saved default pointing at a raw model falls through to the
+  first visible one instead of leaving the bar with nothing highlighted.
+- The backend marks Workspace models `preset: true` and arena models `arena: true`
+  (`backend/open_webui/utils/models.py`); a raw pipeline/connection model has
+  neither → hidden. Verified live: Arena Model / KI Lehrer / Shopping Mode /
+  Suchmodell shown, `MINTIFY – cyankiwi/Qwen3.5-27B-AWQ-4bit` hidden.
+- `$models` itself is untouched — the raw model is still available as a base model
+  in Workspace → Models, in the playground and in admin settings.
+- Opening an **old** chat that ran on a hidden model keeps that model and shows no
+  highlighted pill (deliberate — existing chats are not rewritten).
+- **Revert:** use `$models` directly in the three call sites; the helpers can stay.
+
 ## Apply changes
 
 ```bash
