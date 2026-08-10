@@ -6,6 +6,7 @@
 	import Tooltip from '../common/Tooltip.svelte';
 
 	import { updateUserSettings } from '$lib/apis/users';
+	import { getSelectableModels } from '$lib/utils';
 	const i18n = getContext('i18n');
 
 	export let selectedModels = [''];
@@ -40,7 +41,7 @@
 					<Selector
 						id={`${selectedModelIdx}`}
 						placeholder={$i18n.t('Select a model')}
-						items={$models.map((model) => ({
+						items={getSelectableModels($models).map((model) => ({
 							value: model.id,
 							label: model.name,
 							model: model

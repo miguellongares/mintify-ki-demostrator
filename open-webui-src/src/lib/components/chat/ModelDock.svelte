@@ -16,24 +16,29 @@
 
 <script lang="ts">
 	import { models } from '$lib/stores';
+	import { getSelectableModels } from '$lib/utils';
 
 	// Two-way bound from Navbar → same array of model ids the dropdown uses.
 	export let selectedModels = [''];
 	// On the landing/new-chat page we render the dock bigger.
 	export let home = false;
 
+	// Only models built in the UI — the raw base/pipeline models stay out of the
+	// dock (they remain available as base models in Workspace → Models).
+	$: dockModels = getSelectableModels($models);
+
 	const selectModel = (id: string) => {
 		selectedModels = [id];
 	};
 </script>
 
-{#if $models.length > 0}
+{#if dockModels.length > 0}
 	<div
 		class="flex items-center max-w-full overflow-x-auto scrollbar-hidden {home
 			? 'gap-2'
 			: 'gap-1.5'}"
 	>
-		{#each $models as model (model.id)}
+		{#each dockModels as model (model.id)}
 			{@const active = selectedModels[0] === model.id}
 			<button
 				type="button"

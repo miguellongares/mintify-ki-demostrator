@@ -1298,3 +1298,21 @@ export const convertOpenApiToToolPayload = (openApiSpec) => {
 
 	return toolPayload;
 };
+
+/**
+ * Models offered in the chat model picker: only the ones built in the UI —
+ * Workspace models (the backend marks them `preset: true`) and Arena models.
+ * A raw base model coming straight from a connection or a pipeline is left out
+ * of the picker but stays in `$models`, so it is still selectable as a base
+ * model in Workspace → Models, in the playground and in admin settings.
+ */
+export const isUiCreatedModel = (model) => (model?.preset ?? false) || (model?.arena ?? false);
+
+/**
+ * Same list, with a safety net: if nothing was built in the UI yet, fall back to
+ * every model so the picker is never empty (and the chat unusable).
+ */
+export const getSelectableModels = (models) => {
+	const uiModels = (models ?? []).filter(isUiCreatedModel);
+	return uiModels.length > 0 ? uiModels : (models ?? []);
+};
