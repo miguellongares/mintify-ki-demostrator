@@ -121,10 +121,23 @@ class TikaLoader:
 
 
 class DoclingLoader:
-    def __init__(self, url, file_path=None, mime_type=None):
+    def __init__(
+        self,
+        url,
+        file_path=None,
+        mime_type=None,
+        do_ocr=True,
+        force_ocr=True,
+        ocr_lang="de",
+        ocr_preset="auto",
+    ):
         self.url = url.rstrip("/")
         self.file_path = file_path
         self.mime_type = mime_type
+        self.do_ocr = do_ocr
+        self.force_ocr = force_ocr
+        self.ocr_lang = ocr_lang
+        self.ocr_preset = ocr_preset
 
     def load(self) -> list[Document]:
         with open(self.file_path, "rb") as f:
@@ -136,9 +149,17 @@ class DoclingLoader:
                 )
             }
 
+            # OCR params are explicit rather than left to docling-serve's own
+            # defaults — see config.py DOCLING_DO_OCR/DOCLING_FORCE_OCR/etc.
+            # ocr_preset must stay "auto" on the current deployment — other
+            # preset values (e.g. "easyocr", "tesseract") 404.
             params = {
                 "image_export_mode": "placeholder",
                 "table_mode": "accurate",
+                "do_ocr": str(self.do_ocr).lower(),
+                "force_ocr": str(self.force_ocr).lower(),
+                "ocr_lang": self.ocr_lang,
+                "ocr_preset": self.ocr_preset,
             }
 
             endpoint = f"{self.url}/v1/convert/file"
@@ -209,6 +230,10 @@ class Loader:
                     url=self.kwargs.get("DOCLING_SERVER_URL"),
                     file_path=file_path,
                     mime_type=file_content_type,
+                    do_ocr=self.kwargs.get("DOCLING_DO_OCR", True),
+                    force_ocr=self.kwargs.get("DOCLING_FORCE_OCR", True),
+                    ocr_lang=self.kwargs.get("DOCLING_OCR_LANG", "de"),
+                    ocr_preset=self.kwargs.get("DOCLING_OCR_PRESET", "auto"),
                 )
         elif (
             self.engine == "document_intelligence"

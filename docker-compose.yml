@@ -55,6 +55,14 @@ services:
       # Personal-docs text extraction uses the SAME docling-serve instance as
       # OWUI's knowledge-base uploads (RunPod, SSH tunnel on host port 5001).
       - DOCLING_SERVER_URL=${DOCLING_SERVER_URL:-http://host.docker.internal:5001}
+      # Explicit OCR config sent on every docling-serve request — verified
+      # live against the running instance (2026-08-03): force_ocr+ocr_lang
+      # measurably improved German OCR accuracy; ocr_preset must stay "auto"
+      # (other presets like "easyocr"/"tesseract" 404 on this deployment).
+      - DOCLING_DO_OCR=${DOCLING_DO_OCR:-true}
+      - DOCLING_FORCE_OCR=${DOCLING_FORCE_OCR:-true}
+      - DOCLING_OCR_LANG=${DOCLING_OCR_LANG:-de}
+      - DOCLING_OCR_PRESET=${DOCLING_OCR_PRESET:-auto}
     volumes:
       # Document text now comes from OWUI's API (by file id), not from disk —
       # no uploads mount needed.
@@ -143,6 +151,13 @@ services:
       - AUDIO_TTS_VOICE=de-DE
       - CONTENT_EXTRACTION_ENGINE=docling
       - DOCLING_SERVER_URL=http://host.docker.internal:5001
+      # Explicit OCR config — kept in sync with mintify-rag-service above so
+      # OWUI-uploaded and personal-docs files get identical OCR handling.
+      # ocr_preset must stay "auto" (other presets 404 on this deployment).
+      - DOCLING_DO_OCR=true
+      - DOCLING_FORCE_OCR=true
+      - DOCLING_OCR_LANG=de
+      - DOCLING_OCR_PRESET=auto
       - USER_PERMISSIONS_CHAT_CONTROLS=False
     volumes:
       - ./data/open-webui:/app/backend/data

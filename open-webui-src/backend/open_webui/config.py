@@ -1779,6 +1779,35 @@ DOCLING_SERVER_URL = PersistentConfig(
     os.getenv("DOCLING_SERVER_URL", "http://docling:5001"),
 )
 
+# Explicit OCR config for the docling-serve request, instead of relying on
+# its own undocumented defaults (mirrors rag-backend/app/config.py, kept in
+# sync so OWUI-uploaded and personal-docs files get identical OCR handling).
+# ocr_preset must stay "auto" on the current deployment — other preset
+# values (e.g. "easyocr", "tesseract") 404, verified live 2026-08-03.
+DOCLING_DO_OCR = PersistentConfig(
+    "DOCLING_DO_OCR",
+    "rag.docling_do_ocr",
+    os.getenv("DOCLING_DO_OCR", "true").lower() == "true",
+)
+
+DOCLING_FORCE_OCR = PersistentConfig(
+    "DOCLING_FORCE_OCR",
+    "rag.docling_force_ocr",
+    os.getenv("DOCLING_FORCE_OCR", "true").lower() == "true",
+)
+
+DOCLING_OCR_LANG = PersistentConfig(
+    "DOCLING_OCR_LANG",
+    "rag.docling_ocr_lang",
+    os.getenv("DOCLING_OCR_LANG", "de"),
+)
+
+DOCLING_OCR_PRESET = PersistentConfig(
+    "DOCLING_OCR_PRESET",
+    "rag.docling_ocr_preset",
+    os.getenv("DOCLING_OCR_PRESET", "auto"),
+)
+
 DOCUMENT_INTELLIGENCE_ENDPOINT = PersistentConfig(
     "DOCUMENT_INTELLIGENCE_ENDPOINT",
     "rag.document_intelligence_endpoint",

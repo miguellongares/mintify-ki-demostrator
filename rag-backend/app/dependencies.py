@@ -69,7 +69,13 @@ def init_singletons(qdrant_client):
 
     _personal_docs = PersonalDocsStore(settings.personal_docs_dir)
     _owui_auth = OwuiAuth(settings.owui_base_url)
-    _extractor = Extractor(settings.docling_server_url)
+    _extractor = Extractor(
+        settings.docling_server_url,
+        do_ocr=settings.docling_do_ocr,
+        force_ocr=settings.docling_force_ocr,
+        ocr_lang=settings.docling_ocr_lang,
+        ocr_preset=settings.docling_ocr_preset,
+    )
     print(f"[RAG] PersonalDocsStore → {settings.personal_docs_dir}")
     print(f"[RAG] Extractor (docling) → {settings.docling_server_url}")
 
