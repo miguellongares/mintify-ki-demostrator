@@ -215,6 +215,12 @@ class Indexer:
         if not content.strip():
             print(f"[RAG] {filename} ({file_id}): no extracted text — skipped.", flush=True)
             return 0
+        if len(content.strip()) < 20:
+            print(
+                f"[RAG] {filename} ({file_id}): suspiciously little text extracted "
+                f"({len(content.strip())} chars) — possible OCR failure",
+                flush=True,
+            )
 
         h = record.get("hash") or hashlib.md5(content.encode("utf-8")).hexdigest()
         if self._indexed.get(file_id) == h:

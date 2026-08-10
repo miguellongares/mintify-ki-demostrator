@@ -525,8 +525,14 @@ def remove_file_from_knowledge_by_id(
         pass
 
     # MINTIFY: files are shared (upload dedup reuses one row; user_file grants record
-    # who holds them). Only hard-delete the underlying content when no OTHER KB and no
-    # user grant still references it; otherwise just drop it from this KB's file_ids.
+    # who holds them). Releasing the caller's own grant here mirrors delete_file_by_id
+    # in files.py — otherwise the uploader's grant (created automatically at upload
+    # time) never goes away and the file/user_file rows are never purged, no matter how
+    # many times the file is removed from a KB.
+    UserFiles.delete_grant(user.id, form_data.file_id)
+
+    # Only hard-delete the underlying content when no OTHER KB and no user grant still
+    # references it; otherwise just drop it from this KB's file_ids.
     if (
         Knowledges.count_knowledge_bases_referencing_file(form_data.file_id, exclude_id=id) == 0
         and UserFiles.count_grants_for_file(form_data.file_id) == 0
@@ -641,6 +647,10 @@ async def delete_knowledge_by_id(id: str, user=Depends(get_verified_user)):
     from open_webui.routers.files import _notify_rag_backend
 
     for fid in (knowledge.data or {}).get("file_ids", []) or []:
+        # Release the caller's own grant before checking, same reasoning as
+        # remove_file_from_knowledge_by_id above.
+        UserFiles.delete_grant(user.id, fid)
+
         if (
             Knowledges.count_knowledge_bases_referencing_file(fid, exclude_id=id) > 0
             or UserFiles.count_grants_for_file(fid) > 0

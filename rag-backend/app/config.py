@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     # server OWUI uses for knowledge-base/chat uploads (RunPod, SSH tunnel on
     # host port 5001; OWUI reaches it via DOCLING_SERVER_URL too).
     docling_server_url: str = "http://host.docker.internal:5001"
+    # Explicit OCR config for docling-serve, instead of relying on its own
+    # undocumented defaults. Verified live against the running instance
+    # (2026-08-03): do_ocr already defaults to true there, but force_ocr+
+    # ocr_lang measurably improved German OCR accuracy on a real scanned
+    # document (e.g. "Loniares"→"Longares", "10S5S"→"10555"). ocr_preset
+    # MUST stay "auto" — this deployment 404s on any other preset value
+    # (e.g. "easyocr", "tesseract" are not enabled server-side).
+    docling_do_ocr: bool = True
+    docling_force_ocr: bool = True
+    docling_ocr_lang: str = "de"
+    docling_ocr_preset: str = "auto"
 
     # --- Web search (backend-owned: SearXNG search + trafilatura extraction) ---
     # The pipeline forwards web_search=True + the query when the user enables 🌐.
