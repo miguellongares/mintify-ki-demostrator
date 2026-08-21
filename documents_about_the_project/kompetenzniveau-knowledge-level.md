@@ -6,7 +6,11 @@ from 0 to 3. The model **reads** that level on every chat turn to adapt how deep
 it explains things, and **writes** it itself after running a short competence
 diagnosis (Kompetenzdiagnose).
 
-It is deliberately **backend-only** — there is no UI element. See
+It is deliberately **backend-only for the learner-facing side** — there is no
+sidebar/chat UI element. The one exception, added later (August 2026), is an
+**admin-facing "Kompetenzniveau" checkbox** in OWUI Admin Panel → Models, which
+lets an admin exclude a specific model from the feature entirely — see
+[Per-model opt-out](#per-model-opt-out). See also
 [Where you can actually see it](#where-you-can-actually-see-it) and
 [Deferred work](#deferred-work).
 
@@ -309,8 +313,16 @@ HTTP API stay as they are.
 | `docker-compose.yml` | `./data/knowledge_level` volume + `KOMPETENZ_ENABLED` |
 | `.claude/CLAUDE.md` | feature documentation |
 
-Note what is **not** in that list: `pipelines/mintify_pipeline.py` and anything
-under `open-webui-src/`. Neither needed touching.
+**Later addition (per-model opt-out, August 2026)** touched two files this
+list originally said would stay untouched:
+
+| File | Change |
+|---|---|
+| `pipelines/mintify_pipeline.py` | `_kompetenz_capability_enabled()` + forwards `kompetenz_capability` |
+| `rag-backend/app/routers/rag.py` | `PipeRequest.kompetenz_capability`, ANDed into `kompetenz_active` |
+| `open-webui-src/.../Models/Capabilities.svelte` | new `kompetenzniveau` checkbox entry |
+| `open-webui-src/.../Models/ModelEditor.svelte` | new `kompetenzniveau` default in `capabilities` |
+| `open-webui-src/.../i18n/locales/de-DE/translation.json` | help-text translation |
 
 ## The store — `services/knowledge_level.py`
 
@@ -437,6 +449,44 @@ Three behaviours worth noting:
   reflection therefore also counts. That is a deliberate simplification: it is
   still the model's stated conclusion, and it keeps this a single pass over one
   text stream.
+
+## Per-model opt-out
+
+An admin can turn this feature off for one specific model — e.g. it should
+only run on the "Lehrer"/diagnosis persona, not on every model in the
+dropdown — via a **"Kompetenzniveau" checkbox** next to the existing
+Vision/Usage/Citations checkboxes in OWUI Admin Panel → Models →
+create/edit → "Fähigkeiten" ("Capabilities").
+
+This reuses OWUI's existing generic `meta.capabilities: dict` mechanism
+instead of adding new plumbing:
+
+- **Frontend** — `Capabilities.svelte` renders one checkbox per key already
+  present in the `capabilities` object it's bound to, so adding
+  `kompetenzniveau` to the `helpText` map and to the default `capabilities`
+  object in `ModelEditor.svelte` is enough; no new template markup needed.
+  Saved as `model.meta.capabilities.kompetenzniveau` exactly like `vision`/
+  `usage`/`citations`.
+- **Pipeline** — OWUI already puts the full per-model `meta` dict (capabilities
+  included) at `body.metadata.model.info.meta` on every chat request — the
+  same object `_extract_file_ids()` already reads `knowledge` from
+  (`pipelines/mintify_pipeline.py:~85`). A new sibling function,
+  `_kompetenz_capability_enabled(body)`, reads `capabilities.kompetenzniveau`
+  from there and forwards it as `kompetenz_capability` in the `/api/pipe`
+  payload.
+- **Backend** — `PipeRequest.kompetenz_capability: bool = True` in
+  `routers/rag.py`, ANDed into the existing `kompetenz_active` flag alongside
+  `settings.kompetenz_enabled` (global kill-switch) and `bool(req.user_id)`.
+  Since both the read path (profile/tool-contract injection) and the write
+  path (marker filtering) already branch on that one `kompetenz_active`
+  variable, no other code needed to change.
+
+**Back-compat default: missing key = ON.** A model saved before this checkbox
+existed has no `kompetenzniveau` key in its stored `meta.capabilities` at all.
+`_kompetenz_capability_enabled()` treats that case as `True`, so every
+existing model (including whichever one currently runs the diagnosis) keeps
+behaving exactly as it did before this change, until an admin opens it in the
+editor and explicitly unchecks the box.
 
 ## Wiring into the chat flow — `routers/rag.py`
 

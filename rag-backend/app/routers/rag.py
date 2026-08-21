@@ -92,6 +92,12 @@ class PipeRequest(BaseModel):
     # (Qwen3.5 chat_template_kwargs.enable_thinking); the <think> block is streamed
     # back as a collapsible "Gedankengang" section.
     thinking: bool = False
+    # Per-model "Kompetenzniveau" checkbox (OWUI Admin Panel → model →
+    # Capabilities). True (default) = inject the profile/tool contract for this
+    # model; False = admin explicitly excluded this model. Back-compat: a model
+    # saved before this checkbox existed has no such key in its capabilities, and
+    # the pipeline extractor defaults that case to True too.
+    kompetenz_capability: bool = True
 
 
 class PassthroughRequest(BaseModel):
@@ -193,7 +199,11 @@ async def pipe(
     # above — like the web block — so braces in the stored Begründung are safe.
     # Gated on user_id: with no user there is nowhere to store a result, so
     # offering the tool would only invite a marker we'd have to discard.
-    kompetenz_active = settings.kompetenz_enabled and bool(req.user_id)
+    kompetenz_active = (
+        settings.kompetenz_enabled
+        and req.kompetenz_capability
+        and bool(req.user_id)
+    )
     if kompetenz_active:
         record = levels.get(req.user_id)
         print(
