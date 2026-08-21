@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     # Per-user personal files (sidebar drag & drop). SQLite DB + raw files live
     # under this directory — bind-mounted to ./data/personal_docs on the host.
     personal_docs_dir: str = "/data/personal_docs"
+    # Per-user Kompetenzniveau (financial-literacy level 0–3). SQLite DB under
+    # this directory — bind-mounted to ./data/knowledge_level on the host.
+    knowledge_level_dir: str = "/data/knowledge_level"
+    # Inject the [LERNENDENPROFIL] block + the [WERKZEUG] tool contract into every
+    # system prompt, and intercept the model's [[KOMPETENZNIVEAU:n]] marker.
+    # Kill-switch: set false to disable the whole feature without a code change.
+    kompetenz_enabled: bool = True
     # docling-serve instance used to extract personal-file text — the SAME
     # server OWUI uses for knowledge-base/chat uploads (RunPod, SSH tunnel on
     # host port 5001; OWUI reaches it via DOCLING_SERVER_URL too).

@@ -12,17 +12,21 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.config import Settings
 from app.dependencies import (
     get_embedder,
+    get_knowledge_level,
     get_llm_client,
     get_query_rewriter,
     get_retriever,
+    get_settings,
     get_sparse_embedder,
     get_web_searcher,
 )
-from app.services import context_cache
+from app.services import context_cache, level_tool
 from app.services.dates import today_german
 from app.services.embedder import Embedder
+from app.services.knowledge_level import KnowledgeLevelStore
 from app.services.llm_client import LLMClient
 from app.services.query_rewriter import QueryRewriter
 from app.services.retriever import Retriever
@@ -106,6 +110,8 @@ async def pipe(
     retriever: Retriever = Depends(get_retriever),
     llm: LLMClient = Depends(get_llm_client),
     web_searcher: WebSearcher = Depends(get_web_searcher),
+    levels: KnowledgeLevelStore = Depends(get_knowledge_level),
+    settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     print(f"\n{'='*60}")
     print(f"[RAG] pipe() called")
@@ -182,6 +188,24 @@ async def pipe(
             web=web_ctx, date=today
         )
 
+    # Kompetenzniveau: tell the model what this learner already knows, and declare
+    # the tool it can use to (re)assess. Appended AFTER the {context} .format()
+    # above — like the web block — so braces in the stored Begründung are safe.
+    # Gated on user_id: with no user there is nowhere to store a result, so
+    # offering the tool would only invite a marker we'd have to discard.
+    kompetenz_active = settings.kompetenz_enabled and bool(req.user_id)
+    if kompetenz_active:
+        record = levels.get(req.user_id)
+        print(
+            f"[Kompetenz] user={req.user_id} aktuelles Niveau:"
+            f" {record['level'] if record else 'noch nicht ermittelt'}"
+        )
+        enriched_system = (
+            enriched_system.rstrip()
+            + level_tool.profile_block(record)
+            + level_tool.TOOL_CONTRACT
+        )
+
     # Remember what this answer was built from, keyed by chat, so the Bewertung
     # judges can grade it against the SAME sources (they run on a separate
     # browser call that otherwise has no context). See services/context_cache.py.
@@ -202,10 +226,27 @@ async def pipe(
     print(f"[RAG] Sending {len(enriched)} messages to vLLM (model: {req.model_id})")
     print(f"{'='*60}\n")
 
+    def on_level(level: int, reason: str) -> None:
+        """Fired by level_tool.filter_stream when the model emits its marker."""
+        levels.set(
+            req.user_id, level, reason, source="diagnose", chat_id=req.chat_id
+        )
+        print(
+            f"[Kompetenz] user={req.user_id} → Niveau {level}"
+            f" ({level_tool.label(level)}) | Begründung: {reason!r}",
+            flush=True,
+        )
+
     def token_generator():
-        yield from llm.stream(
+        tokens = llm.stream(
             enriched, req.model_id, req.temperature, enable_thinking=req.thinking
         )
+        # Strip the model's [[KOMPETENZNIVEAU:n]] marker out of the visible answer
+        # and persist it. Must wrap the stream (not post-process it): tokens arrive
+        # one at a time, so the marker would otherwise leak character by character.
+        if kompetenz_active:
+            tokens = level_tool.filter_stream(tokens, on_level)
+        yield from tokens
         # Always show the user which pages were used (the model may or may not cite).
         if web_results:
             yield _quellen_footer(web_results)
