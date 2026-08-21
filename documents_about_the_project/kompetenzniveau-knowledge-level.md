@@ -466,7 +466,8 @@ instead of adding new plumbing:
   `kompetenzniveau` to the `helpText` map and to the default `capabilities`
   object in `ModelEditor.svelte` is enough; no new template markup needed.
   Saved as `model.meta.capabilities.kompetenzniveau` exactly like `vision`/
-  `usage`/`citations`.
+  `usage`/`citations`. Defaults to **unchecked** for a brand-new model (opt-in),
+  which is a *different* default than the backend's back-compat handling below.
 - **Pipeline** — OWUI already puts the full per-model `meta` dict (capabilities
   included) at `body.metadata.model.info.meta` on every chat request — the
   same object `_extract_file_ids()` already reads `knowledge` from
