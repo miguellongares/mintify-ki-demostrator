@@ -164,6 +164,24 @@ def _thinking_enabled(body: dict) -> bool:
     return bool(feats.get("thinking")) if isinstance(feats, dict) else False
 
 
+def _kompetenz_capability_enabled(body: dict) -> bool:
+    """False only when the admin explicitly unchecked the "Kompetenzniveau"
+    capability box for this model (OWUI Admin Panel → Models → Capabilities).
+    Missing key — a model saved before this checkbox existed — defaults to
+    True so existing behavior is unaffected until an admin opts a model out.
+    """
+    if not isinstance(body, dict):
+        return True
+    meta = body.get("metadata")
+    model = meta.get("model") if isinstance(meta, dict) else None
+    info = model.get("info") if isinstance(model, dict) else None
+    mmeta = info.get("meta") if isinstance(info, dict) else None
+    capabilities = mmeta.get("capabilities") if isinstance(mmeta, dict) else None
+    if not isinstance(capabilities, dict) or "kompetenzniveau" not in capabilities:
+        return True
+    return bool(capabilities["kompetenzniveau"])
+
+
 def _log_payload(path: str, payload: dict) -> None:
     """Print the outgoing payload in a compact, readable way before _stream().
 
@@ -265,6 +283,9 @@ class Pipeline:
         web_search = _web_search_enabled(body)
         # 💡 toggle → the rag-backend enables Qwen3.5 thinking for this turn.
         thinking = _thinking_enabled(body)
+        # Per-model "Kompetenzniveau" checkbox → whether the rag-backend should
+        # inject/track the competence-level profile for THIS model at all.
+        kompetenz_capability = _kompetenz_capability_enabled(body)
 
         # Drop OWUI's <source>-injected user turn from history too — keep only the
         # clean text. Same regex on every prior user message.
@@ -310,6 +331,7 @@ class Pipeline:
             "chat_id": _extract_chat_id(body),
             "web_search": web_search,
             "thinking": thinking,
+            "kompetenz_capability": kompetenz_capability,
         }
 
         _log_payload("/api/pipe", payload)

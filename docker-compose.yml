@@ -63,12 +63,16 @@ services:
       - DOCLING_FORCE_OCR=${DOCLING_FORCE_OCR:-true}
       - DOCLING_OCR_LANG=${DOCLING_OCR_LANG:-de}
       - DOCLING_OCR_PRESET=${DOCLING_OCR_PRESET:-auto}
+      # Kompetenzniveau feature kill-switch (see rag-backend/app/services/level_tool.py)
+      - KOMPETENZ_ENABLED=${KOMPETENZ_ENABLED:-true}
     volumes:
       # Document text now comes from OWUI's API (by file id), not from disk —
       # no uploads mount needed.
       - ./rag-backend/app:/app/app
       # Per-user personal files (sidebar drag & drop): SQLite DB + raw files.
       - ./data/personal_docs:/data/personal_docs
+      # Per-user Kompetenzniveau (financial-literacy level 0–3): SQLite DB.
+      - ./data/knowledge_level:/data/knowledge_level
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

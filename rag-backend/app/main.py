@@ -6,7 +6,15 @@ from qdrant_client import QdrantClient
 
 from app.config import settings
 from app.dependencies import init_singletons
-from app.routers import index, judge, models, personal_docs, rag, tts
+from app.routers import (
+    index,
+    judge,
+    knowledge_level,
+    models,
+    personal_docs,
+    rag,
+    tts,
+)
 
 _ready = False
 
@@ -42,6 +50,7 @@ app.include_router(index.router, prefix="/api")
 app.include_router(judge.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 app.include_router(personal_docs.router, prefix="/api")
+app.include_router(knowledge_level.router, prefix="/api")
 
 
 @app.get("/api/health")

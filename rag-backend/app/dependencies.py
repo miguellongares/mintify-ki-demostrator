@@ -3,6 +3,7 @@ from app.services.embedder import Embedder
 from app.services.extractor import Extractor
 from app.services.indexer import Indexer
 from app.services.judge_client import JudgeClient
+from app.services.knowledge_level import KnowledgeLevelStore
 from app.services.llm_client import LLMClient
 from app.services.owui_auth import OwuiAuth
 from app.services.owui_client import OWUIClient
@@ -26,12 +27,14 @@ _web_searcher: WebSearcher | None = None
 _personal_docs: PersonalDocsStore | None = None
 _owui_auth: OwuiAuth | None = None
 _extractor: Extractor | None = None
+_knowledge_level: KnowledgeLevelStore | None = None
 
 #
 def init_singletons(qdrant_client):
     global _embedder, _sparse_embedder, _query_rewriter, _retriever, _indexer
     global _llm_client, _judge_client, _tts_client
     global _owui_client, _web_searcher, _personal_docs, _owui_auth, _extractor
+    global _knowledge_level
 
     _embedder = Embedder(
         settings.embedding_model,
@@ -76,7 +79,12 @@ def init_singletons(qdrant_client):
         ocr_lang=settings.docling_ocr_lang,
         ocr_preset=settings.docling_ocr_preset,
     )
+    _knowledge_level = KnowledgeLevelStore(settings.knowledge_level_dir)
     print(f"[RAG] PersonalDocsStore → {settings.personal_docs_dir}")
+    print(
+        f"[RAG] KnowledgeLevelStore → {settings.knowledge_level_dir}"
+        f" (Kompetenzniveau {'aktiv' if settings.kompetenz_enabled else 'deaktiviert'})"
+    )
     print(f"[RAG] Extractor (docling) → {settings.docling_server_url}")
 
     if settings.tts_url:
@@ -136,3 +144,7 @@ def get_owui_auth() -> OwuiAuth:
 
 def get_extractor() -> Extractor:
     return _extractor
+
+
+def get_knowledge_level() -> KnowledgeLevelStore:
+    return _knowledge_level

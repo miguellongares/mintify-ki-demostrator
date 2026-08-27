@@ -46,6 +46,7 @@
 	"Add text content": "Textinhalt hinzufügen",
 	"Add User": "Benutzer hinzufügen",
 	"Add User Group": "Benutzergruppe hinzufügen",
+	"Adds the learner's Kompetenzniveau profile to this model's system prompt and lets it update the level": "Fügt das Kompetenzniveau-Profil der lernenden Person zum Systemprompt dieses Modells hinzu und ermöglicht es dem Modell, das Niveau zu aktualisieren.",
 	"Adjusting these settings will apply changes universally to all users.": "Das Anpassen dieser Einstellungen wird Änderungen universell auf alle Benutzer anwenden.",
 	"admin": "Administrator",
 	"Admin": "Administrator",
