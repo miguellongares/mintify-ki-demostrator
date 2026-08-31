@@ -1,5 +1,12 @@
 @reference "./tailwind.css";
 
+/* Height of the app shell. Defaults to the dynamic viewport; while the iOS
+   keyboard is open, +layout.svelte overrides it with the visual viewport's
+   height in px so the navbar cannot be scrolled out of view. */
+:root {
+	--app-height: 100dvh;
+}
+
 @font-face {
 	font-family: 'Inter';
 	src: url('/assets/fonts/Inter-Variable.ttf');

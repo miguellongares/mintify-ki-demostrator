@@ -44,7 +44,16 @@ export default defineConfig({
 		proxy: {
 			'/api':   { target: 'http://localhost:3000', changeOrigin: true, ws: true },
 			'/oauth': { target: 'http://localhost:3000', changeOrigin: true },
-			'/ws':    { target: 'http://localhost:3000', changeOrigin: true, ws: true }
+			'/ws':    { target: 'http://localhost:3000', changeOrigin: true, ws: true },
+			// Same route Caddy serves in production (/rag-api/* -> localhost:8088).
+			// Having it here means the browser can always use a relative /rag-api
+			// URL in dev, so the Bewertung panel and Persoenliche Dateien also work
+			// when the page is opened from a phone on the LAN (http://<ip>:5173).
+			'/rag-api': {
+				target: 'http://localhost:8088',
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/rag-api/, '')
+			}
 		}
 	}
 });

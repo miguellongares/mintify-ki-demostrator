@@ -121,7 +121,7 @@
 					}}
 				/>
 				<button
-					class="flex items-center gap-1.5 rounded-full bg-mintify-blue text-white hover:bg-mintify-blue-light dark:bg-mintify-green dark:text-mintify-blue dark:hover:bg-mintify-green-dark transition px-3.5 py-1.5 text-sm font-medium disabled:opacity-50"
+					class="flex items-center gap-1.5 rounded-full bg-mintify-blue text-white hover:bg-mintify-blue-light dark:bg-mintify-green dark:text-mintify-blue dark:hover:bg-mintify-green-dark transition px-3.5 py-2 md:py-1.5 text-sm font-medium disabled:opacity-50"
 					disabled={uploading}
 					on:click={() => fileInput.click()}
 				>
@@ -147,7 +147,9 @@
 					nutze „Hochladen".
 				</div>
 			{:else}
-				<div class="max-h-[24rem] overflow-y-auto scrollbar-hidden flex flex-col gap-1">
+				<div
+					class="max-h-[55vh] md:max-h-[24rem] overflow-y-auto scrollbar-hidden flex flex-col gap-1"
+				>
 					{#each docs as doc (doc.document_id)}
 						<div
 							class="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-850 transition"
@@ -164,7 +166,7 @@
 								</div>
 							</div>
 							<button
-								class="shrink-0 p-1.5 rounded-lg text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+								class="shrink-0 p-2 md:p-1.5 rounded-lg text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 								aria-label="Herunterladen"
 								title="Herunterladen"
 								on:click={() => downloadDoc(doc)}
@@ -172,7 +174,7 @@
 								<ArrowDownTray className="size-4" />
 							</button>
 							<button
-								class="shrink-0 p-1.5 rounded-lg text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+								class="shrink-0 p-2 md:p-1.5 rounded-lg text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
 								aria-label="Löschen"
 								title="Löschen"
 								on:click={() => deleteDoc(doc)}

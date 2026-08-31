@@ -1,7 +1,9 @@
 // Personal files (sidebar drag & drop) — stored in the rag-backend under
 // data/personal_docs (SQLite + raw files), scoped per user via the OWUI token.
-// URLs are environment-aware like the Bewertung panel: direct port in dev,
+// URLs are environment-aware (see $lib/utils/ragApi): the Vite proxy in dev,
 // /rag-api/* behind Caddy in production. Do NOT hardcode ports elsewhere.
+
+import { ragApiBase } from '$lib/utils/ragApi';
 
 export type PersonalDoc = {
 	document_id: string;
@@ -11,10 +13,7 @@ export type PersonalDoc = {
 	created_at: string;
 };
 
-const getBaseUrl = () =>
-	window.location.hostname === 'localhost'
-		? 'http://localhost:8088/api/personal-docs'
-		: `${window.location.origin}/rag-api/api/personal-docs`;
+const getBaseUrl = () => `${ragApiBase()}/api/personal-docs`;
 
 const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
 

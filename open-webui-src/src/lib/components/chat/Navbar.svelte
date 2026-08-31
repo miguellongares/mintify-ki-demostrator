@@ -61,11 +61,13 @@
 		></div>
 
 		<div class=" flex max-w-full w-full mx-auto px-1 pt-0.5 bg-transparent">
-			<div class="flex items-center w-full max-w-full">
+			<div
+				class="flex items-center w-full max-w-full md:grid md:grid-cols-[1fr_auto_1fr]"
+			>
 				<div
 					class="{$showSidebar
 						? 'md:hidden'
-						: ''} mr-1 self-start flex flex-none items-center text-gray-600 dark:text-gray-400"
+						: ''} mr-1 self-start flex flex-none items-center text-gray-600 dark:text-gray-400 md:col-start-1"
 				>
 					<button
 						id="sidebar-toggle-button"
@@ -92,13 +94,13 @@
 				</div>
 
 				{#if showModelSelector}
-					<div class="hidden md:flex flex-1 justify-center items-center min-w-0 px-2">
+					<div class="hidden md:flex md:col-start-2 justify-center items-center min-w-0 px-2">
 						<ModelDock bind:selectedModels home={isHome} />
 					</div>
 				{/if}
 
 				<div
-					class="self-start ml-auto md:ml-0 flex flex-none items-center text-gray-600 dark:text-gray-400"
+					class="self-start ml-auto md:ml-0 md:col-start-3 md:justify-self-end flex flex-none items-center text-gray-600 dark:text-gray-400"
 				>
 					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
 					{#if shareEnabled && chat && (chat.id || $temporaryChatEnabled)}
@@ -163,8 +165,8 @@
 					<Tooltip content="Richter-Modus">
 						<button
 							class="flex items-center gap-2 cursor-pointer {navButtonHeight} {isHome
-								? 'px-3.5'
-								: 'px-3'} mr-1 rounded-full border font-medium transition-all duration-150 ease-out {$showJudgement
+								? 'px-2 md:px-3.5'
+								: 'px-2 md:px-3'} mr-1 rounded-full border font-medium transition-all duration-150 ease-out {$showJudgement
 								? 'bg-mintify-green border-mintify-green-dark text-mintify-blue-dark hover:bg-mintify-green-dark'
 								: 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}"
 							on:click={async () => {
@@ -174,7 +176,10 @@
 							aria-pressed={$showJudgement}
 						>
 							<Scale className="{isHome ? 'size-5' : 'size-4'} shrink-0" />
-							<span class="{isHome ? 'text-sm' : 'text-xs'} whitespace-nowrap">Richter Modus</span
+							<span
+								class="hidden md:inline {isHome
+									? 'text-sm'
+									: 'text-xs'} whitespace-nowrap">Richter Modus</span
 							>
 						</button>
 					</Tooltip>
@@ -208,12 +213,6 @@
 			</div>
 		</div>
 	</div>
-
-	{#if showModelSelector}
-		<div class="md:hidden flex justify-center w-full px-1.5 mt-1 pointer-events-auto">
-			<ModelDock bind:selectedModels home={isHome} />
-		</div>
-	{/if}
 
 	{#if !history.currentId && !$chatId && ($banners.length > 0 || ($config?.license_metadata?.type ?? null) === 'trial' || (($config?.license_metadata?.seats ?? null) !== null && $config?.user_count > $config?.license_metadata?.seats))}
 		<div class=" w-full z-30 mt-5">

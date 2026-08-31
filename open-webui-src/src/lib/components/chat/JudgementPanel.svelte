@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { showJudgement } from '$lib/stores';
+	import { ragApiBase } from '$lib/utils/ragApi';
 	import ChevronRight from '../icons/ChevronRight.svelte';
 
 	type JudgeResult = { rating: string; reasoning: string };
@@ -10,9 +11,7 @@
 		judgeLoading = true;
 		judgeResults = null;
 		try {
-			const judgeUrl = window.location.hostname === 'localhost'
-				? `http://localhost:8088/api/judge`
-				: `${window.location.origin}/rag-api/api/judge`;
+			const judgeUrl = `${ragApiBase()}/api/judge`;
 			const resp = await fetch(judgeUrl, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -61,7 +60,7 @@
 
 <aside
 	id="judgement-panel"
-	class="h-screen max-h-[100dvh] min-h-screen select-none shrink-0 overflow-x-hidden fixed md:relative top-0 right-0 z-50 bg-mintify-tint text-gray-900 dark:bg-mintify-night dark:text-gray-200 text-sm transition-[width] duration-200 ease-in-out {$showJudgement
+	class="h-screen max-h-[100dvh] min-h-[100dvh] select-none shrink-0 overflow-x-hidden fixed md:relative top-0 right-0 z-50 bg-mintify-tint text-gray-900 dark:bg-mintify-night dark:text-gray-200 text-sm transition-[width] duration-200 ease-in-out {$showJudgement
 		? 'w-[350px] max-w-[350px] border-l border-mintify-blue/15 dark:border-mintify-blue/30'
 		: 'w-0'}"
 	data-state={$showJudgement}
