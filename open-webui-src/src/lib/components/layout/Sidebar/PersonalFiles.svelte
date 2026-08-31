@@ -87,7 +87,12 @@
 				Persönliche Dateien{docCount ? ` (${docCount})` : ''}
 			</div>
 			<div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-				{dragDepth > 0 ? 'Loslassen zum Hochladen' : 'Dateien hierher ziehen · Klick öffnet'}
+				{#if dragDepth > 0}
+					Loslassen zum Hochladen
+				{:else}
+					<span class="md:hidden">Zum Hochladen tippen</span>
+					<span class="hidden md:inline">Dateien hierher ziehen · Klick öffnet</span>
+				{/if}
 			</div>
 		</div>
 	</button>

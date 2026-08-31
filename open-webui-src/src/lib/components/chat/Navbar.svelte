@@ -163,8 +163,8 @@
 					<Tooltip content="Richter-Modus">
 						<button
 							class="flex items-center gap-2 cursor-pointer {navButtonHeight} {isHome
-								? 'px-3.5'
-								: 'px-3'} mr-1 rounded-full border font-medium transition-all duration-150 ease-out {$showJudgement
+								? 'px-2 md:px-3.5'
+								: 'px-2 md:px-3'} mr-1 rounded-full border font-medium transition-all duration-150 ease-out {$showJudgement
 								? 'bg-mintify-green border-mintify-green-dark text-mintify-blue-dark hover:bg-mintify-green-dark'
 								: 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}"
 							on:click={async () => {
@@ -174,7 +174,10 @@
 							aria-pressed={$showJudgement}
 						>
 							<Scale className="{isHome ? 'size-5' : 'size-4'} shrink-0" />
-							<span class="{isHome ? 'text-sm' : 'text-xs'} whitespace-nowrap">Richter Modus</span
+							<span
+								class="hidden md:inline {isHome
+									? 'text-sm'
+									: 'text-xs'} whitespace-nowrap">Richter Modus</span
 							>
 						</button>
 					</Tooltip>
@@ -208,12 +211,6 @@
 			</div>
 		</div>
 	</div>
-
-	{#if showModelSelector}
-		<div class="md:hidden flex justify-center w-full px-1.5 mt-1 pointer-events-auto">
-			<ModelDock bind:selectedModels home={isHome} />
-		</div>
-	{/if}
 
 	{#if !history.currentId && !$chatId && ($banners.length > 0 || ($config?.license_metadata?.type ?? null) === 'trial' || (($config?.license_metadata?.seats ?? null) !== null && $config?.user_count > $config?.license_metadata?.seats))}
 		<div class=" w-full z-30 mt-5">
