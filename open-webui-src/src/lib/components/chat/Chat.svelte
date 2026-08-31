@@ -1978,7 +1978,7 @@
 />
 
 <div
-	class="h-screen max-h-[100dvh] transition-[max-width] duration-200 ease-in-out {$showSidebar && $showJudgement
+	class="h-[var(--app-height)] max-h-[var(--app-height)] transition-[max-width] duration-200 ease-in-out {$showSidebar && $showJudgement
 		? 'md:max-w-[calc(100%-260px-350px)]'
 		: $showSidebar
 		? 'md:max-w-[calc(100%-260px)]'

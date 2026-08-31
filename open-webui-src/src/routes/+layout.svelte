@@ -481,14 +481,48 @@
 
 		mobile.set(window.innerWidth < BREAKPOINT);
 
+		// iOS Safari does not shrink the LAYOUT viewport when the on-screen keyboard
+		// opens, so 100dvh keeps its pre-keyboard value: the app shell stays taller
+		// than the visible area, and Safari scrolls the document to reveal the
+		// focused input — which pushes the navbar out of sight.
+		//
+		// Track the VISUAL viewport instead and pin --app-height to it, but only
+		// while it is meaningfully shorter than the layout viewport (i.e. a keyboard
+		// is actually up). The rest of the time the variable keeps its CSS default
+		// of 100dvh, so desktop and no-keyboard mobile behaviour are untouched.
+		const visualViewport = window.visualViewport;
+		const KEYBOARD_THRESHOLD = 80;
+
+		const syncAppHeight = () => {
+			if (!visualViewport) return;
+
+			const keyboardUp = window.innerHeight - visualViewport.height > KEYBOARD_THRESHOLD;
+			if (keyboardUp) {
+				document.documentElement.style.setProperty(
+					'--app-height',
+					`${visualViewport.height}px`
+				);
+				// Undo the auto-scroll Safari performs when focusing the input.
+				if (window.scrollY !== 0) {
+					window.scrollTo(0, 0);
+				}
+			} else {
+				document.documentElement.style.removeProperty('--app-height');
+			}
+		};
+
 		const onResize = () => {
 			if (window.innerWidth < BREAKPOINT) {
 				mobile.set(true);
 			} else {
 				mobile.set(false);
 			}
+			syncAppHeight();
 		};
 		window.addEventListener('resize', onResize);
+
+		visualViewport?.addEventListener('resize', syncAppHeight);
+		visualViewport?.addEventListener('scroll', syncAppHeight);
 
 		user.subscribe((value) => {
 			if (value) {
@@ -601,6 +635,8 @@
 
 		return () => {
 			window.removeEventListener('resize', onResize);
+			visualViewport?.removeEventListener('resize', syncAppHeight);
+			visualViewport?.removeEventListener('scroll', syncAppHeight);
 		};
 	});
 </script>
