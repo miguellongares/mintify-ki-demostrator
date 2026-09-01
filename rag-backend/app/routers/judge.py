@@ -34,6 +34,9 @@ def _build_judge_context(cached: dict | None) -> str:
 class JudgeResult(BaseModel):
     rating: str
     reasoning: str
+    # Which of the client's three prompt variants (A/B/C) produced this verdict.
+    # Lets a card in the Bewertung panel be traced back to its prompt.
+    variant: str | None = None
 
 
 class JudgeResponse(BaseModel):

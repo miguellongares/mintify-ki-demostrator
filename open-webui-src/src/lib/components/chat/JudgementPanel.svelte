@@ -3,7 +3,7 @@
 	import { ragApiBase } from '$lib/utils/ragApi';
 	import ChevronRight from '../icons/ChevronRight.svelte';
 
-	type JudgeResult = { rating: string; reasoning: string };
+	type JudgeResult = { rating: string; reasoning: string; variant?: string };
 	let judgeResults: JudgeResult[] | null = null;
 	let judgeLoading = false;
 
@@ -32,28 +32,32 @@
 		}
 	};
 
+	// Backend verdicts are 'gut' | 'mittel' | 'eher_schlecht'. 'schlecht' is the
+	// pre-August-2026 spelling and is still mapped so older chats render.
+	const isNegative = (rating: string) => rating === 'eher_schlecht' || rating === 'schlecht';
+
 	function ratingColor(rating: string) {
 		if (rating === 'gut') return 'border-green-500 bg-green-50 dark:bg-green-900/20 dark:border-green-500';
-		if (rating === 'schlecht') return 'border-red-500 bg-red-50 dark:bg-red-900/20 dark:border-red-500';
+		if (isNegative(rating)) return 'border-red-500 bg-red-50 dark:bg-red-900/20 dark:border-red-500';
 		return 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-400';
 	}
 
 	function ratingLabel(rating: string) {
 		if (rating === 'gut') return 'Gut';
-		if (rating === 'schlecht') return 'Schlecht';
+		if (isNegative(rating)) return 'Eher schlecht';
 		if (rating === 'mittel') return 'Mittel';
 		return rating;
 	}
 
 	function ratingTextColor(rating: string) {
 		if (rating === 'gut') return 'text-green-700 dark:text-green-400';
-		if (rating === 'schlecht') return 'text-red-700 dark:text-red-400';
+		if (isNegative(rating)) return 'text-red-700 dark:text-red-400';
 		return 'text-yellow-700 dark:text-yellow-400';
 	}
 
 	function ratingDotColor(rating: string) {
 		if (rating === 'gut') return 'bg-green-500';
-		if (rating === 'schlecht') return 'bg-red-500';
+		if (isNegative(rating)) return 'bg-red-500';
 		return 'bg-yellow-400';
 	}
 </script>
