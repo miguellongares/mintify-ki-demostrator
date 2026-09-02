@@ -97,8 +97,15 @@ legacy `schlecht` value so older chats do not break.
 ## What the user sees
 
 The **"Richter Modus"** button in the chat Navbar (scales icon) toggles
-`showJudgement`. While the panel is open, every finished answer triggers a new
-round:
+`showJudgement`. A round is triggered in **two** situations:
+
+1. **An answer finishes streaming** while the panel is open.
+2. **The panel is opened** on a chat that already has an answer on screen — it
+   judges that answer immediately instead of waiting for the next question. In a
+   fresh chat with nothing to judge, the cards are cleared and stay empty.
+
+Re-opening the panel on an answer it already judged costs nothing: the trigger is
+guarded by `lastJudgedMessageId`, so the existing verdicts simply stay.
 
 ```
 ┌ Bewertung ───────────────────────────┐
@@ -124,9 +131,12 @@ time is one judge call, not three.
 ## The flow through the stack
 
 ```
-Browser (chat finishes streaming)
+Browser
+  │  Chat.svelte — two entry points into the same helper:
+  │    (a) stream finished        → judgeMessage(message)
+  │    (b) panel opened ($: block) → judgeMessage(latestAnswer())
   │
-  │  Chat.svelte:  if ($showJudgement) judgementPaneComponent.requestJudge(
+  │  judgeMessage → judgementPaneComponent.requestJudge(
   │                    userMsg,
   │                    removeDetails(answer, ['reasoning']),   ← Gedankengang stripped
   │                    $chatId)
@@ -375,6 +385,9 @@ instance. Notes:
 - **The URL is never hardcoded.** `ragApiBase()` decides between the Vite proxy
   path, `localhost:8088`, and `{origin}/rag-api`. A hardcoded `:8088` is exactly
   the bug that broke production in May 2026 (see [History](#history)).
+- **`resetJudge()`** is a second exported function, called when the panel is
+  opened on a chat with no answer yet — otherwise the component (which is never
+  destroyed, only shrunk to `w-0`) would keep showing the previous chat's cards.
 - **The failure path renders three cards**, all `mittel` /
   *"Bewertung nicht verfügbar."* — the panel never shows an empty state after a
   network error.
@@ -460,6 +473,7 @@ and 4 at once, which makes it a decent smoke test of the prompts.
 | July 2026 | Judges rated grounded answers `schlecht` because they only saw `{query, answer}` and fell back on their own knowledge. Fixed by `context_cache.py` and the context-aware prompt |
 | July 2026 | `enable_thinking: false` forced on judge calls after `--reasoning-parser qwen3` was enabled on the vLLM instance |
 | Aug 2026 | Client-supplied prompts: one shared preamble + the five ethical rules + three role variants A/B/C, one per judge. Output moved from JSON to plain `Urteil: …` text, `json.loads()` replaced by `_parse_verdict()`, `schlecht` → `eher_schlecht`, `variant` added to the response |
+| Sep 2026 | Opening the panel now judges the answer already on screen (`$: ` block in `Chat.svelte` + `resetJudge()`); previously the cards stayed empty until the next question |
 | Sep 2026 | Judges failed a greeting on two counts, both prompt gaps rather than model faults: they read the (correct, grounded) current date as invented, and they penalised the answer for not being about Altersvorsorge. Fixed by `_DATE_BLOCK` and `_SCOPE_NOTE` |
 
 ---

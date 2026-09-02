@@ -100,6 +100,9 @@
 	let controlPane;
 	let controlPaneComponent;
 	let judgementPaneComponent;
+	// Id of the answer the Bewertung panel currently shows verdicts for, so
+	// re-opening the panel does not re-run three LLM calls on the same answer.
+	let lastJudgedMessageId: string | null = null;
 
 	let autoScroll = true;
 	let processing = '';
@@ -467,6 +470,48 @@
 
 		chats.subscribe(() => {});
 	});
+
+	// Ask the three judges to rate one specific answer. Used from two places:
+	// when a stream finishes with the panel already open, and when the panel is
+	// opened on a chat that already has an answer on screen.
+	const judgeMessage = (message) => {
+		if (!$showJudgement || !judgementPaneComponent || !message?.id) return;
+
+		const answer = removeDetails(message.content ?? '', ['reasoning']);
+		if (!answer.trim()) return;
+
+		const msgList = createMessagesList(history, message.id);
+		const userMsg = [...msgList].reverse().find((m) => m.role === 'user')?.content ?? '';
+
+		lastJudgedMessageId = message.id;
+		judgementPaneComponent.requestJudge(userMsg, answer, $chatId);
+	};
+
+	// The newest finished assistant message of the current chat, or null in a
+	// fresh chat / while an answer is still streaming.
+	const latestAnswer = () => {
+		if (!history?.currentId) return null;
+		const msgList = createMessagesList(history, history.currentId);
+		return (
+			[...msgList]
+				.reverse()
+				.find((m) => m.role === 'assistant' && m.done !== false && !m.error) ?? null
+		);
+	};
+
+	// Opening the panel judges the answer that is already on screen, instead of
+	// leaving three empty cards until the user asks the next question. Guarded by
+	// lastJudgedMessageId so closing and re-opening the panel is free.
+	$: if ($showJudgement && judgementPaneComponent) {
+		const message = latestAnswer();
+		if (!message) {
+			// Fresh chat — nothing to judge, and no stale verdicts from the previous one.
+			lastJudgedMessageId = null;
+			judgementPaneComponent.resetJudge();
+		} else if (message.id !== lastJudgedMessageId) {
+			judgeMessage(message);
+		}
+	}
 
 	onDestroy(() => {
 		chatIdUnsubscriber?.();
@@ -1252,15 +1297,7 @@
 				createMessagesList(history, message.id)
 			);
 
-			if ($showJudgement && judgementPaneComponent) {
-				const msgList = createMessagesList(history, message.id);
-				const userMsg = [...msgList].reverse().find((m) => m.role === 'user')?.content ?? '';
-				judgementPaneComponent.requestJudge(
-					userMsg,
-					removeDetails(message.content, ['reasoning']),
-					$chatId
-				);
-			}
+			judgeMessage(message);
 		}
 
 		console.log(data);

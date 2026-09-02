@@ -32,6 +32,13 @@
 		}
 	};
 
+	// Clear the cards — used when the panel is opened on a chat that has no answer
+	// to judge yet, so verdicts from a previous chat never linger.
+	export const resetJudge = () => {
+		judgeResults = null;
+		judgeLoading = false;
+	};
+
 	// Backend verdicts are 'gut' | 'mittel' | 'eher_schlecht'. 'schlecht' is the
 	// pre-August-2026 spelling and is still mapped so older chats render.
 	const isNegative = (rating: string) => rating === 'eher_schlecht' || rating === 'schlecht';
