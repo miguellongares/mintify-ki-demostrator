@@ -21,6 +21,7 @@ above all the [context cache](#the-context-cache--why-it-exists).
 | Where does the user see it? | Right sidebar, toggled by the **"Richter Modus"** button in the chat Navbar |
 | How many judges? | Exactly 3, run in parallel — one per prompt variant A / B / C |
 | Are the three prompts identical? | **No** (since August 2026). Shared preamble + three different role framings |
+| What is judged? | The **whole conversation**, not just the last turn (since September 2026) |
 | What do they rate against? | The five ethical rules: Faktentreue, kein Verkaufsdruck, Autonomie, Transparenz, Fürsorge |
 | What is the verdict scale? | `gut` \| `mittel` \| `eher_schlecht` |
 | Which model? | The same vLLM chat model, auto-discovered from `GET {JUDGE_VLLM_URL}/v1/models` |
@@ -244,7 +245,7 @@ prompt = "\n\n".join([
     _PREAMBLE,        # Zweck + die fünf ethischen Regeln + Ausgabeformat
     _SCOPE_NOTE,      # "nicht jede Nachricht handelt von Altersvorsorge"
     source_block,     # _CONTEXT_BLOCK (cache hit) or _NO_CONTEXT_BLOCK (miss)
-    conversation,     # [GESPRÄCH] Nutzerfrage: … / Letzte Chatbot-Antwort: …
+    conversation,     # [GESPRÄCH] the full transcript (or the last turn alone)
     _VARIANTS[i],     # A, B or C
 ])
 ```
@@ -282,6 +283,54 @@ the same rule `routers/rag.py` follows when it appends blocks *after*
 
 Context is truncated to `_MAX_CONTEXT_CHARS = 12000` so three parallel calls fit
 comfortably in the 16k window.
+
+## Judging the whole conversation
+
+Until September 2026 the judges saw exactly one question and one answer. That
+contradicted the prompts themselves — variants A and B say *"in diesem Gespräch"*
+and *"die Chatunterhaltung"* — and it made a whole class of violation invisible:
+a sales nudge in message 2 that the last answer never walks back reads as clean
+when the last answer is all you see.
+
+`Chat.svelte` now sends the full transcript alongside the last turn:
+
+```js
+const transcript = msgList
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.error)
+    .map((m) => ({ role: m.role, content: removeDetails(m.content ?? '', ['reasoning']) }))
+    .filter((m) => m.content.trim());
+```
+
+`_format_transcript()` renders it as a German dialogue and marks the final
+chatbot turn, because several variants ask about it by name:
+
+```
+Nutzer: Lohnt sich Riester für mich?
+
+Chatbot (letzte Antwort): Riester kann sich lohnen. Nachteile: …
+```
+
+Three details that keep this cheap and safe:
+
+- **Formatted once per round, not once per judge.** `judge_all()` builds the
+  string before the `ThreadPoolExecutor` fans out; all three variants share it.
+- **Capped at `_MAX_TRANSCRIPT_CHARS` (8000), trimmed from the front.** Whole
+  messages are dropped, never half a turn, and a single
+  `[… frühere Nachrichten aus Platzgründen gekürzt …]` line is added afterwards —
+  adding it inside the trim loop would make the note itself the next thing
+  dropped. Recent turns are what the verdict is really about; the oldest are the
+  cheapest to lose.
+- **The client's variant text is untouched.** `_TRANSCRIPT_BLOCK` carries the
+  redefinition instead: the whole conversation is the object of evaluation, a
+  violation in an earlier message counts as much as one in the last, and where a
+  variant says *"die letzte Chatbot-Antwort"* it means the chatbot's behaviour
+  across the chat. Only the chatbot's turns are graded — the user's messages are
+  context. This matters because the variants are expected to be re-tuned by the
+  client; they stay a verbatim block that can be swapped wholesale.
+
+Budget check: 12000 chars of context + 8000 of transcript + ~2000 of prompt is
+roughly 6–7k tokens of German, comfortably inside the 16k window with room for
+the 512-token answer.
 
 ## The vLLM call
 
@@ -348,9 +397,18 @@ Two subtleties worth keeping in mind when editing the regex:
 
 ```
 POST /api/judge
-  { "query": "…", "answer": "…", "chat_id": "…" }
+  {
+    "query":    "…",                       ← last user message (logging + fallback)
+    "answer":   "…",                       ← last assistant message (idem)
+    "chat_id":  "…",
+    "messages": [ {"role": "user", "content": "…"}, … ]   ← the whole chat
+  }
 → { "judges": [ { "rating": "gut", "reasoning": "…", "variant": "A" }, … ] }
 ```
+
+`messages` is optional. Without it the prompt falls back to `_CONVERSATION_BLOCK`
+(the old single-turn shape), which keeps a stale frontend build working against a
+new backend.
 
 `_build_judge_context()` turns the cached dict into one labelled block:
 
@@ -488,6 +546,7 @@ and 4 at once, which makes it a decent smoke test of the prompts.
 | July 2026 | `enable_thinking: false` forced on judge calls after `--reasoning-parser qwen3` was enabled on the vLLM instance |
 | Aug 2026 | Client-supplied prompts: one shared preamble + the five ethical rules + three role variants A/B/C, one per judge. Output moved from JSON to plain `Urteil: …` text, `json.loads()` replaced by `_parse_verdict()`, `schlecht` → `eher_schlecht`, `variant` added to the response |
 | Sep 2026 | Opening the panel now judges the answer already on screen (`$: ` block in `Chat.svelte` + `resetJudge()`); previously the cards stayed empty until the next question |
+| Sep 2026 | Judges moved from one turn to the **whole conversation**: `messages` added to `POST /api/judge`, `_format_transcript()` + `_TRANSCRIPT_BLOCK` in `judge_client.py` |
 | Sep 2026 | Opening a stored chat from the sidebar with the panel open judges that chat's last answer too. All triggers unified in `syncJudgement()`, called from the `$: ` block, the end of `loadChat()`, and `initNewChat()` |
 | Sep 2026 | Judges failed a greeting on two counts, both prompt gaps rather than model faults: they read the (correct, grounded) current date as invented, and they penalised the answer for not being about Altersvorsorge. Fixed by `_DATE_BLOCK` and `_SCOPE_NOTE` |
 
@@ -495,11 +554,10 @@ and 4 at once, which makes it a decent smoke test of the prompts.
 
 ## Known limitations
 
-- **The judges see one turn, not the conversation.** Variants A and B say *"in
-  diesem Gespräch"* / *"die Chatunterhaltung"*, but only the latest question and
-  answer are actually sent. An answer that is fine alone but manipulative in the
-  context of three preceding turns will not be caught. Sending the last N turns
-  is a small, well-scoped change: `Chat.svelte` already builds `msgList`.
+- **Long chats are judged on their tail.** The transcript is capped at 8000
+  chars, so in a very long conversation the opening turns fall out of the
+  judges' view. The truncation is announced in the prompt, but a violation in
+  message 2 of a 40-message chat will eventually stop being visible.
 - **`max_tokens = 512` for a 1–2 sentence verdict.** Harmless, but if a model
   rambles past the format the parser keeps only the first `Urteil:` match and
   the rest is discarded rather than shown.

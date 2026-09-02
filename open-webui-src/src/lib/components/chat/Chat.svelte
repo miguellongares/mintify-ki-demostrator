@@ -477,9 +477,10 @@
 		chats.subscribe(() => {});
 	});
 
-	// Ask the three judges to rate one specific answer. Used from two places:
-	// when a stream finishes with the panel already open, and when the panel is
-	// opened on a chat that already has an answer on screen.
+	// Ask the three judges to rate the conversation up to and including `message`.
+	// The judges grade the WHOLE chat, so the full transcript is sent; query and
+	// answer still carry the last turn, which the backend uses for logging and as
+	// the fallback when no transcript is present.
 	const judgeMessage = (message) => {
 		if (!$showJudgement || !judgementPaneComponent || !message?.id) return;
 
@@ -489,8 +490,18 @@
 		const msgList = createMessagesList(history, message.id);
 		const userMsg = [...msgList].reverse().find((m) => m.role === 'user')?.content ?? '';
 
+		// Same stripping the single answer gets: the collapsed Gedankengang is the
+		// model's private reflection, not part of what the judges grade.
+		const transcript = msgList
+			.filter((m) => (m.role === 'user' || m.role === 'assistant') && !m.error)
+			.map((m) => ({
+				role: m.role,
+				content: removeDetails(m.content ?? '', ['reasoning'])
+			}))
+			.filter((m) => m.content.trim());
+
 		lastJudgedMessageId = message.id;
-		judgementPaneComponent.requestJudge(userMsg, answer, $chatId);
+		judgementPaneComponent.requestJudge(userMsg, answer, $chatId, transcript);
 	};
 
 	// The newest finished assistant message of the current chat, or null in a

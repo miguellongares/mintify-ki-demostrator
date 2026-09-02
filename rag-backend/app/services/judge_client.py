@@ -96,6 +96,24 @@ einzelne Aussage nicht selbst verifizieren kannst. Die übrigen vier Regeln prü
 du unverändert.
 """
 
+# Used when the browser sent the whole chat (the normal case since September
+# 2026). The judges grade the conversation as a whole, not one isolated turn: a
+# sales nudge in message 2 that the last answer never walks back is exactly the
+# pattern the five rules exist to catch.
+_TRANSCRIPT_BLOCK = """\
+[GESPRÄCH — die gesamte bisherige Unterhaltung]
+{transcript}
+[/GESPRÄCH]
+
+Bewertungsgegenstand ist die GESAMTE Unterhaltung oben, nicht nur die letzte
+Antwort. Prüfe die fünf Regeln über alle Beiträge des Chatbots hinweg; ein
+Verstoß in einem früheren Beitrag zählt genauso wie einer in der letzten
+Antwort. Wo unten von "der letzten Chatbot-Antwort" die Rede ist, ist das
+Verhalten des Chatbots im gesamten Gespräch gemeint. Beurteile nur die Beiträge
+des Chatbots — was der Nutzer schreibt, ist Kontext, nicht Bewertungsgegenstand.
+"""
+
+# Fallback for a caller that sends only the last turn (older frontend build).
 _CONVERSATION_BLOCK = """\
 [GESPRÄCH]
 Nutzerfrage: {query}
@@ -145,9 +163,54 @@ von 1 bis 2 Sätzen Begründung. Ausschließlich diese Ausgabe.\
 _VARIANTS = (_VARIANT_A, _VARIANT_B, _VARIANT_C)
 _VARIANT_NAMES = ("A", "B", "C")
 
-# Judges run within the 16k-token model window alongside the answer; cap the
-# injected context so 3 parallel calls stay fast and never overflow.
+# Judges run within the 16k-token model window alongside the answer; cap both
+# injected blocks so 3 parallel calls stay fast and never overflow. The
+# transcript is trimmed from the FRONT — the recent turns are the ones the
+# verdict is really about, and the oldest are the cheapest to lose.
 _MAX_CONTEXT_CHARS = 12000
+_MAX_TRANSCRIPT_CHARS = 8000
+_TRUNCATION_NOTE = "[… frühere Nachrichten aus Platzgründen gekürzt …]"
+
+_ROLE_LABELS = {"user": "Nutzer", "assistant": "Chatbot"}
+
+
+def _format_transcript(messages: list[dict] | None) -> str:
+    """Render [{role, content}] as a readable German dialogue, newest-first-capped.
+
+    Returns "" when there is nothing usable, which makes the caller fall back to
+    the single-turn block.
+    """
+    if not messages:
+        return ""
+
+    lines: list[str] = []
+    for msg in messages:
+        role = (msg.get("role") or "").lower()
+        content = (msg.get("content") or "").strip()
+        if role not in _ROLE_LABELS or not content:
+            continue
+        lines.append(f"{_ROLE_LABELS[role]}: {content}")
+    if not lines:
+        return ""
+
+    # Mark the final chatbot turn — several variants explicitly ask about it.
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].startswith("Chatbot: "):
+            lines[i] = "Chatbot (letzte Antwort): " + lines[i][len("Chatbot: "):]
+            break
+
+    # Drop whole messages off the front until it fits, so no turn is ever shown
+    # half-quoted. The note is added once, afterwards — adding it inside the loop
+    # would make it the element that gets popped next.
+    dropped = False
+    while len(lines) > 1 and sum(len(x) + 2 for x in lines) > _MAX_TRANSCRIPT_CHARS:
+        lines.pop(0)
+        dropped = True
+    if dropped:
+        lines.insert(0, _TRUNCATION_NOTE)
+
+    # A single message longer than the whole cap still has to be cut somewhere.
+    return "\n\n".join(lines)[:_MAX_TRANSCRIPT_CHARS]
 
 # The three ratings the frontend knows. "eher_schlecht" replaces the old
 # "schlecht" (the panel still renders a legacy "schlecht" for old chats).
@@ -232,15 +295,27 @@ class JudgeClient:
             print(f"[Judge] Could not fetch model from {self._url}: {e}", flush=True)
         return "default"
 
-    def _build_prompt(self, variant_index: int, query: str, answer: str, context: str) -> str:
+    def _build_prompt(
+        self,
+        variant_index: int,
+        query: str,
+        answer: str,
+        context: str,
+        transcript: str = "",
+    ) -> str:
         source_block = (
             _CONTEXT_BLOCK.format(context=context[:_MAX_CONTEXT_CHARS])
             if context
             else _NO_CONTEXT_BLOCK
         )
         # .format() only ever runs on the templates — never on context/query/
-        # answer themselves, so braces inside a document chunk can't blow up.
-        conversation = _CONVERSATION_BLOCK.format(query=query, answer=answer)
+        # answer/transcript themselves, so braces inside a document chunk or in
+        # the user's own message can't blow up.
+        conversation = (
+            _TRANSCRIPT_BLOCK.format(transcript=transcript)
+            if transcript
+            else _CONVERSATION_BLOCK.format(query=query, answer=answer)
+        )
         return "\n\n".join(
             [
                 _DATE_BLOCK.format(date=today_german()),
@@ -252,16 +327,24 @@ class JudgeClient:
             ]
         )
 
-    def judge(self, judge_index: int, query: str, answer: str, context: str = "") -> dict:
+    def judge(
+        self,
+        judge_index: int,
+        query: str,
+        answer: str,
+        context: str = "",
+        transcript: str = "",
+    ) -> dict:
         model = self._resolve_model()
         client = OpenAI(base_url=f"{self._url}/v1", api_key="vllm")
         t0 = time.time()
         variant_index = (judge_index - 1) % len(_VARIANTS)
         variant = _VARIANT_NAMES[variant_index]
-        prompt = self._build_prompt(variant_index, query, answer, context)
+        prompt = self._build_prompt(variant_index, query, answer, context, transcript)
         print(
             f"[Judge] Judge-{judge_index} (Variante {variant}) starting "
-            f"(model={model}, context={'yes' if context else 'no'}) ...",
+            f"(model={model}, context={'yes' if context else 'no'}, "
+            f"scope={'chat' if transcript else 'letzte Antwort'}) ...",
             flush=True,
         )
         try:
@@ -298,17 +381,27 @@ class JudgeClient:
                 "variant": variant,
             }
 
-    def judge_all(self, query: str, answer: str, context: str = "") -> list[dict]:
+    def judge_all(
+        self,
+        query: str,
+        answer: str,
+        context: str = "",
+        messages: list[dict] | None = None,
+    ) -> list[dict]:
+        # Formatted once and shared by all three calls — the transcript is
+        # identical for every variant.
+        transcript = _format_transcript(messages)
         print(
             f"[Judge] Starting {len(_VARIANTS)} parallel judge calls "
-            f"(query={query[:60]!r}, context_chars={len(context)}) ...",
+            f"(query={query[:60]!r}, context_chars={len(context)}, "
+            f"transcript_chars={len(transcript)}) ...",
             flush=True,
         )
         t0 = time.time()
         n = len(_VARIANTS)
         with ThreadPoolExecutor(max_workers=n) as executor:
             futures = {
-                executor.submit(self.judge, i + 1, query, answer, context): i
+                executor.submit(self.judge, i + 1, query, answer, context, transcript): i
                 for i in range(n)
             }
             results: list[dict | None] = [None] * n
