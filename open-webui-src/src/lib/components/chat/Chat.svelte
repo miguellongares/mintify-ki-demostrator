@@ -179,6 +179,12 @@
 				window.setTimeout(() => scrollToBottom(), 0);
 				const chatInput = document.getElementById('chat-input');
 				chatInput?.focus();
+
+				// Trigger 2: a stored chat was opened. history now holds ITS messages,
+				// so judge that chat's last answer rather than leaving the previous
+				// chat's verdicts on screen. Must sit after loadChat() resolved — the
+				// reactive trigger above cannot see this, $showJudgement never changed.
+				syncJudgement();
 			} else {
 				await goto('/');
 			}
@@ -499,10 +505,12 @@
 		);
 	};
 
-	// Opening the panel judges the answer that is already on screen, instead of
-	// leaving three empty cards until the user asks the next question. Guarded by
-	// lastJudgedMessageId so closing and re-opening the panel is free.
-	$: if ($showJudgement && judgementPaneComponent) {
+	// Bring the Bewertung panel in line with whatever is currently on screen:
+	// judge the newest answer, or clear the cards if this chat has none yet.
+	// Guarded by lastJudgedMessageId, so a call that changes nothing is free.
+	const syncJudgement = () => {
+		if (!$showJudgement || !judgementPaneComponent) return;
+
 		const message = latestAnswer();
 		if (!message) {
 			// Fresh chat — nothing to judge, and no stale verdicts from the previous one.
@@ -511,6 +519,12 @@
 		} else if (message.id !== lastJudgedMessageId) {
 			judgeMessage(message);
 		}
+	};
+
+	// Trigger 1: the panel is opened — judge the answer already on screen instead
+	// of leaving three empty cards until the user asks the next question.
+	$: if ($showJudgement && judgementPaneComponent) {
+		syncJudgement();
 	}
 
 	onDestroy(() => {
@@ -784,6 +798,10 @@
 
 		chatFiles = [];
 		params = {};
+
+		// Trigger 3: a new chat — clear the panel so the previous chat's verdicts
+		// do not linger (the component is only shrunk to w-0, never destroyed).
+		syncJudgement();
 
 		if ($page.url.searchParams.get('youtube')) {
 			uploadYoutubeTranscription(

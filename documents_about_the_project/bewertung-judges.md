@@ -97,15 +97,27 @@ legacy `schlecht` value so older chats do not break.
 ## What the user sees
 
 The **"Richter Modus"** button in the chat Navbar (scales icon) toggles
-`showJudgement`. A round is triggered in **two** situations:
+`showJudgement`. While it is open, the cards always describe the answer
+currently on screen. Three things trigger a round:
 
-1. **An answer finishes streaming** while the panel is open.
-2. **The panel is opened** on a chat that already has an answer on screen — it
-   judges that answer immediately instead of waiting for the next question. In a
-   fresh chat with nothing to judge, the cards are cleared and stay empty.
+1. **An answer finishes streaming.**
+2. **The panel is opened** on a chat that already has an answer — it judges that
+   answer immediately instead of waiting for the next question.
+3. **A stored chat is opened** from the sidebar while the panel is open — the
+   newly loaded chat's last answer is judged. Starting a new chat clears the
+   cards instead, since there is nothing to judge.
 
-Re-opening the panel on an answer it already judged costs nothing: the trigger is
-guarded by `lastJudgedMessageId`, so the existing verdicts simply stay.
+All three go through one helper, `syncJudgement()`, guarded by
+`lastJudgedMessageId`: a call that would re-judge the answer already on the cards
+does nothing, so closing and re-opening the panel is free.
+
+> **Old chats judge without context.** The context cache is in-process and
+> bounded (see [the context cache](#the-context-cache--why-it-exists)), so a chat
+> from yesterday is virtually always a miss. Those judges run on the lenient
+> no-context prompt and grade wording, balance and transparency rather than
+> Faktentreue against sources. That is by design — the alternative would be
+> grading a grounded answer against the judge's own training knowledge, which is
+> the exact regression the cache was built to prevent.
 
 ```
 ┌ Bewertung ───────────────────────────┐
@@ -132,9 +144,11 @@ time is one judge call, not three.
 
 ```
 Browser
-  │  Chat.svelte — two entry points into the same helper:
-  │    (a) stream finished        → judgeMessage(message)
-  │    (b) panel opened ($: block) → judgeMessage(latestAnswer())
+  │  Chat.svelte — three entry points, one helper:
+  │    (a) stream finished     → judgeMessage(message)
+  │    (b) panel opened        → syncJudgement()   ($: on $showJudgement)
+  │    (c) stored chat loaded  → syncJudgement()   (end of loadChat success)
+  │        new chat started    → syncJudgement()   → resetJudge(), cards cleared
   │
   │  judgeMessage → judgementPaneComponent.requestJudge(
   │                    userMsg,
@@ -474,6 +488,7 @@ and 4 at once, which makes it a decent smoke test of the prompts.
 | July 2026 | `enable_thinking: false` forced on judge calls after `--reasoning-parser qwen3` was enabled on the vLLM instance |
 | Aug 2026 | Client-supplied prompts: one shared preamble + the five ethical rules + three role variants A/B/C, one per judge. Output moved from JSON to plain `Urteil: …` text, `json.loads()` replaced by `_parse_verdict()`, `schlecht` → `eher_schlecht`, `variant` added to the response |
 | Sep 2026 | Opening the panel now judges the answer already on screen (`$: ` block in `Chat.svelte` + `resetJudge()`); previously the cards stayed empty until the next question |
+| Sep 2026 | Opening a stored chat from the sidebar with the panel open judges that chat's last answer too. All triggers unified in `syncJudgement()`, called from the `$: ` block, the end of `loadChat()`, and `initNewChat()` |
 | Sep 2026 | Judges failed a greeting on two counts, both prompt gaps rather than model faults: they read the (correct, grounded) current date as invented, and they penalised the answer for not being about Altersvorsorge. Fixed by `_DATE_BLOCK` and `_SCOPE_NOTE` |
 
 ---
