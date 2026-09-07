@@ -13,6 +13,7 @@ from app.routers import (
     models,
     personal_docs,
     rag,
+    retrieved_sources,
     tts,
 )
 
@@ -51,6 +52,7 @@ app.include_router(judge.router, prefix="/api")
 app.include_router(tts.router, prefix="/api")
 app.include_router(personal_docs.router, prefix="/api")
 app.include_router(knowledge_level.router, prefix="/api")
+app.include_router(retrieved_sources.router, prefix="/api")
 
 
 @app.get("/api/health")

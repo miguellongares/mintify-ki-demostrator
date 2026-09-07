@@ -134,8 +134,19 @@ class Retriever:
             page = hit.payload.get("page")
             score = round(hit.score, 3)   # RRF rank score (NOT cosine similarity)
             text = hit.payload.get("text", "")
-            # Collect metadata for logging in the router (not injected into the prompt).
-            hits_info.append({"source": source, "page": page, "score": score, "text": text})
+            # Collect metadata for logging in the router (not injected into the
+            # prompt) and for the citation list shown/stored per answer — hence
+            # the file identity, not just the display name.
+            hits_info.append(
+                {
+                    "source": source,
+                    "page": page,
+                    "score": score,
+                    "text": text,
+                    "file_id": hit.payload.get("owui_file_id"),
+                    "doc_type": hit.payload.get("doc_type"),
+                }
+            )
             # Format for the system prompt: citation header + chunk text.
             # The LLM is instructed to reference these citations in its answer.
             # RRF scores are rank-based (~0.01–0.5) and would read as nonsense to

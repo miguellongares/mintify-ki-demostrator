@@ -80,6 +80,7 @@
 		getTaskIdsByChatId
 	} from '$lib/apis';
 	import { getTools } from '$lib/apis/tools';
+	import { getRetrievedSources } from '$lib/apis/retrievedSources';
 
 	import Banner from '../common/Banner.svelte';
 	import MessageInput from '$lib/components/chat/MessageInput.svelte';
@@ -1317,6 +1318,14 @@
 					}
 				})
 			);
+
+			// Attach the chunks the rag-backend actually fed to the LLM as this
+			// answer's citations. Must happen BEFORE chatCompletedHandler: that is
+			// what writes the chat (sources included) to the DB.
+			const retrievedSources = await getRetrievedSources(localStorage.token, message.id);
+			if (retrievedSources.length) {
+				message.sources = retrievedSources;
+			}
 
 			history.messages[message.id] = message;
 			await chatCompletedHandler(

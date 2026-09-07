@@ -10,28 +10,60 @@ grounded answers as "schlecht" — see the judge prompt in judge_client.py.
 starts streaming; /api/judge reads it back. The rag-backend runs a single
 uvicorn worker (--reload), so this dict is shared across all requests. A bounded
 LRU keeps it from growing without limit.
+
+The same record also carries the retrieved chunks themselves (hits) keyed by
+message_id, which GET /api/retrieved-sources hands back to the browser so the
+citation list persisted with a chat is exactly what the LLM was fed — see
+routers/retrieved_sources.py.
 """
 
 from collections import OrderedDict
 from threading import Lock
 
-_MAX_ENTRIES = 256
+# Each turn occupies up to two keys (chat_id + message_id), so this holds
+# roughly half as many turns as entries.
+_MAX_ENTRIES = 512
 
 _cache: "OrderedDict[str, dict]" = OrderedDict()
 _lock = Lock()
 
 
-def store(chat_id: str | None, *, context: str, web: str, question: str) -> None:
-    """Remember the context used for chat_id's most recent answer."""
-    if not chat_id:
+def store(
+    chat_id: str | None,
+    *,
+    context: str,
+    web: str,
+    question: str,
+    hits: list[dict] | None = None,
+    user_id: str | None = None,
+    message_id: str | None = None,
+) -> None:
+    """Remember what this answer was built from.
+
+    Stored under chat_id (what the judges look up — they only ever grade the
+    chat's most recent answer) AND under message_id when the pipeline forwarded
+    one, which is what GET /api/retrieved-sources reads: keying the citation
+    list by the exact answer keeps two quick turns in the same chat from
+    handing the browser the wrong turn's chunks.
+
+    `hits` are the retrieved chunks themselves (retriever.hits_info) and
+    `user_id` is the OWUI user the answer was produced for — the sources
+    endpoint refuses to hand a turn's chunks to anybody else.
+    """
+    record = {
+        "context": context or "",
+        "web": web or "",
+        "question": question or "",
+        "hits": hits or [],
+        "user_id": user_id or "",
+    }
+    keys = [k for k in (chat_id, message_id) if k]
+    if not keys:
         return
     with _lock:
-        _cache[chat_id] = {
-            "context": context or "",
-            "web": web or "",
-            "question": question or "",
-        }
-        _cache.move_to_end(chat_id)
+        for key in keys:
+            _cache[key] = record
+            _cache.move_to_end(key)
         while len(_cache) > _MAX_ENTRIES:
             _cache.popitem(last=False)
 
