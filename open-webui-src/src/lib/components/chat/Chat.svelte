@@ -132,6 +132,31 @@
 	let codeInterpreterEnabled = false;
 	let thinkingEnabled = false;
 
+	// MINTIFY: per-model "Websuche" checkbox (Admin Panel → Models → Fähigkeiten,
+	// meta.capabilities.websuche). It SEEDS the 🌐 toggle for a chat that has no
+	// messages yet: picking a model resets the toggle to THAT model's default, so
+	// switching from a Websuche model to a normal one turns it off again instead
+	// of dragging the previous model's state along. The user can still click the
+	// toggle for every message, a chat that already has a history is never
+	// touched, and a missing key = off, so models saved before this checkbox
+	// existed behave exactly as before.
+	let webSearchDefaultAppliedFor: string | null = null;
+
+	const applyModelWebSearchDefault = (modelIds: string[]) => {
+		const key = (modelIds ?? []).join(',');
+		if (key === '' || key === webSearchDefaultAppliedFor) return;
+
+		// Only a fresh chat: never override what the user had in an existing one.
+		if (history?.currentId) return;
+
+		webSearchDefaultAppliedFor = key;
+		webSearchEnabled = modelIds.some(
+			(id) => $models.find((m) => m.id === id)?.info?.meta?.capabilities?.websuche === true
+		);
+	};
+
+	$: applyModelWebSearchDefault(selectedModelIds);
+
 	let chat = null;
 	let tags = [];
 
@@ -810,6 +835,12 @@
 
 		chatFiles = [];
 		params = {};
+
+		// MINTIFY: seed the 🌐 toggle from the model's "Websuche" capability. Reset
+		// the guard first — a new chat re-applies the default even when the model
+		// selection is unchanged from the previous chat.
+		webSearchDefaultAppliedFor = null;
+		applyModelWebSearchDefault(selectedModels);
 
 		// Trigger 3: a new chat — clear the panel so the previous chat's verdicts
 		// do not linger (the component is only shrunk to w-0, never destroyed).

@@ -78,7 +78,8 @@
 		vision: true,
 		usage: undefined,
 		citations: true,
-		kompetenzniveau: false
+		kompetenzniveau: false,
+		websuche: false
 	};
 
 	let knowledge = [];

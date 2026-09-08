@@ -14,6 +14,9 @@
 		citations: $i18n.t('Displays citations in the response'),
 		kompetenzniveau: $i18n.t(
 			"Adds the learner's Kompetenzniveau profile to this model's system prompt and lets it update the level"
+		),
+		websuche: $i18n.t(
+			'Turns web search on by default when a new chat with this model starts. Users can still switch it off per message.'
 		)
 	};
 
@@ -22,6 +25,7 @@
 		usage?: boolean;
 		citations?: boolean;
 		kompetenzniveau?: boolean;
+		websuche?: boolean;
 	} = {};
 </script>
 
