@@ -132,6 +132,28 @@
 	let codeInterpreterEnabled = false;
 	let thinkingEnabled = false;
 
+	// MINTIFY: per-model "Websuche" checkbox (Admin Panel → Models → Fähigkeiten,
+	// meta.capabilities.websuche). Whenever the model selection changes, the 🌐
+	// toggle is reset to THAT model's default — on the new-chat screen and just
+	// the same when switching model in the middle of a running conversation, so
+	// the two never disagree. Switching from a Websuche model to a normal one
+	// therefore turns it off again instead of dragging the previous model's state
+	// along. The user can still click the toggle for every message, and a missing
+	// key = off, so models saved before this checkbox existed behave as before.
+	let webSearchDefaultAppliedFor: string | null = null;
+
+	const applyModelWebSearchDefault = (modelIds: string[]) => {
+		const key = (modelIds ?? []).join(',');
+		if (key === '' || key === webSearchDefaultAppliedFor) return;
+
+		webSearchDefaultAppliedFor = key;
+		webSearchEnabled = modelIds.some(
+			(id) => $models.find((m) => m.id === id)?.info?.meta?.capabilities?.websuche === true
+		);
+	};
+
+	$: applyModelWebSearchDefault(selectedModelIds);
+
 	let chat = null;
 	let tags = [];
 
@@ -811,6 +833,12 @@
 		chatFiles = [];
 		params = {};
 
+		// MINTIFY: seed the 🌐 toggle from the model's "Websuche" capability. Reset
+		// the guard first — a new chat re-applies the default even when the model
+		// selection is unchanged from the previous chat.
+		webSearchDefaultAppliedFor = null;
+		applyModelWebSearchDefault(selectedModels);
+
 		// Trigger 3: a new chat — clear the panel so the previous chat's verdicts
 		// do not linger (the component is only shrunk to w-0, never destroyed).
 		syncJudgement();
@@ -893,6 +921,17 @@
 					(chatContent?.models ?? undefined) !== undefined
 						? chatContent.models
 						: [chatContent.models ?? ''];
+
+				// MINTIFY: seed the 🌐 toggle from the loaded chat's model. Must live
+				// here in a plain function, NOT in the `$: if (chatIdProp)` block —
+				// naming selectedModels/selectedModelIds inside that reactive statement
+				// makes them dependencies of it, and loadChat() assigning selectedModels
+				// then retriggers the whole chat load in an endless loop. The reactive
+				// statement handles a model change; this covers opening a chat that runs
+				// on the model already selected. A saved draft still wins over it.
+				webSearchDefaultAppliedFor = null;
+				applyModelWebSearchDefault(selectedModels);
+
 				history =
 					(chatContent?.history ?? undefined) !== undefined
 						? chatContent.history

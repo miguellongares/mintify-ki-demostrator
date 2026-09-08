@@ -37,7 +37,10 @@
 	onMount(refreshCount);
 </script>
 
-<div class="px-2 mb-1.5 font-primary">
+<!-- mt-3: the chat list above is a flex-1 scroll container and would otherwise
+     end flush against this drop zone, with the last chat title clipped right at
+     its border. The gap separates the two sections. -->
+<div class="px-2 mt-3 mb-2 font-primary">
 	<button
 		class="w-full flex items-center gap-2.5 rounded-xl border border-dashed px-2.5 py-2 text-left transition
 			{dragDepth > 0
