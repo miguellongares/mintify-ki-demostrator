@@ -93,6 +93,10 @@
 		(models[selectedModelIdx]?.info?.meta?.begruessung ?? '').trim() ||
 		$i18n.t('Nice to have you here!');
 
+	// Revealed one word at a time, like a streamed answer. Each word carries its
+	// own animation-delay, so the stagger is pure CSS — no timers to clean up.
+	$: greetingWords = greeting.split(/\s+/).filter(Boolean);
+
 	onMount(() => {});
 </script>
 
@@ -153,14 +157,19 @@
 				</div>
 			</div>
 
-			<!-- MINTIFY: per-model greeting (meta.begruessung), default sentence otherwise -->
-			{#if greeting}
-				<div
-					class="mt-2.5 px-4 text-base @sm:text-lg font-normal text-gray-500 dark:text-gray-400 line-clamp-2 max-w-xl"
-					in:fade={{ duration: 100, delay: 50 }}
-				>
-					{greeting}
-				</div>
+			<!-- MINTIFY: per-model greeting (meta.begruessung), default sentence
+			     otherwise. Keyed on the text so switching model replays the reveal.
+			     Colour is inherited from the parent, i.e. the same near-black the
+			     model name uses. -->
+			{#if greetingWords.length > 0}
+				{#key greeting}
+					<div class="mt-2.5 px-4 text-base @sm:text-lg font-normal max-w-xl">
+						{#each greetingWords as word, i}<span
+								class="greeting-word"
+								style="animation-delay: {120 + i * 90}ms">{word}</span
+							>{' '}{/each}
+					</div>
+				{/key}
 			{/if}
 
 			<div class="flex mt-1 mb-2">
@@ -245,3 +254,34 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	/* MINTIFY: the greeting arrives word by word, like a streamed answer. Every
+	   word already occupies its final position, so nothing reflows while the
+	   sentence appears — only opacity and a small rise are animated. */
+	@keyframes greetingWordIn {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	/* inline-block so translateY applies; the real space emitted between the
+	   spans keeps the normal line-break opportunities. */
+	.greeting-word {
+		display: inline-block;
+		opacity: 0;
+		animation: greetingWordIn 0.28s ease-out forwards;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.greeting-word {
+			opacity: 1;
+			animation: none;
+		}
+	}
+</style>
