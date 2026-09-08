@@ -63,6 +63,9 @@
 		meta: {
 			profile_image_url: '/static/favicon.png',
 			description: '',
+			// MINTIFY: short greeting shown under the model name on the new-chat
+			// screen. Empty → the default sentence from Placeholder.svelte is used.
+			begruessung: '',
 			suggestion_prompts: null,
 			tags: []
 		},
@@ -124,6 +127,11 @@
 		} else {
 			info.meta.description = null;
 		}
+
+		// MINTIFY: blank Begrüßung → null, so the new-chat screen falls back to the
+		// default greeting instead of rendering an empty line.
+		info.meta.begruessung =
+			(info.meta.begruessung ?? '').trim() === '' ? null : info.meta.begruessung.trim();
 
 		if (knowledge.length > 0) {
 			info.meta.knowledge = knowledge;
@@ -508,6 +516,18 @@
 								bind:value={info.meta.description}
 							/>
 						{/if}
+					</div>
+
+					<!-- MINTIFY: one short greeting shown between the model name and the
+					     chat box on the new-chat screen. Leave empty for the default. -->
+					<div class="my-1">
+						<div class=" self-center text-sm font-semibold mb-1">{$i18n.t('Greeting')}</div>
+
+						<input
+							class="text-sm w-full bg-transparent outline-hidden"
+							placeholder={$i18n.t('Nice to have you here!')}
+							bind:value={info.meta.begruessung}
+						/>
 					</div>
 
 					<div class=" mt-2 my-1">

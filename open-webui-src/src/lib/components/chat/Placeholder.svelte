@@ -86,6 +86,13 @@
 
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
 
+	// MINTIFY: short greeting between the model name and the chat box. Per model
+	// via Admin Panel → Models → "Begrüßung" (meta.begruessung); blank or never
+	// configured falls back to the default sentence, so every model has one.
+	$: greeting =
+		(models[selectedModelIdx]?.info?.meta?.begruessung ?? '').trim() ||
+		$i18n.t('Nice to have you here!');
+
 	onMount(() => {});
 </script>
 
@@ -145,6 +152,16 @@
 					{/if}
 				</div>
 			</div>
+
+			<!-- MINTIFY: per-model greeting (meta.begruessung), default sentence otherwise -->
+			{#if greeting}
+				<div
+					class="mt-2.5 px-4 text-base @sm:text-lg font-normal text-gray-500 dark:text-gray-400 line-clamp-2 max-w-xl"
+					in:fade={{ duration: 100, delay: 50 }}
+				>
+					{greeting}
+				</div>
+			{/if}
 
 			<div class="flex mt-1 mb-2">
 				<div in:fade={{ duration: 100, delay: 50 }}>
