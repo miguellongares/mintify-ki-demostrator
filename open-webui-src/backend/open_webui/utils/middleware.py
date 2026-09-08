@@ -695,6 +695,21 @@ def apply_params_to_form_data(form_data, model):
     return form_data
 
 
+def _is_pipelines_model(request, model: dict) -> bool:
+    """True for Pipelines-project models (e.g. MINTIFY). A custom Admin Panel
+    preset built on top of one (base_model_id set) does NOT carry its own
+    "pipeline" key — get_all_models() only ever copies a base model's "pipe"
+    key onto presets, never "pipeline" — so presets must be resolved back to
+    their base model to see it."""
+    if model.get("pipeline"):
+        return True
+    base_model_id = (model.get("info") or {}).get("base_model_id")
+    if base_model_id:
+        base_model = request.app.state.MODELS.get(base_model_id, {})
+        return bool(base_model.get("pipeline"))
+    return False
+
+
 async def process_chat_payload(request, form_data, user, metadata, model):
 
     form_data = apply_params_to_form_data(form_data, model)
@@ -901,11 +916,18 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             except Exception as e:
                 log.exception(e)
 
-    try:
-        form_data, flags = await chat_completion_files_handler(request, form_data, user)
-        sources.extend(flags.get("sources", []))
-    except Exception as e:
-        log.exception(e)
+    # Pipelines-project models (e.g. MINTIFY) do their own retrieval in their
+    # backend and inject context directly into the system prompt. Running this
+    # handler for them is pure waste: with BYPASS_EMBEDDING_AND_RETRIEVAL it
+    # dumps each attached file's *entire* extracted text into `sources`, which
+    # (a) triggers an extra LLM call (generate_queries) whose result is thrown
+    # away, and (b) gets persisted verbatim into chat.chat in webui.db.
+    if not _is_pipelines_model(request, model):
+        try:
+            form_data, flags = await chat_completion_files_handler(request, form_data, user)
+            sources.extend(flags.get("sources", []))
+        except Exception as e:
+            log.exception(e)
 
     # If context is not empty, insert it into the messages
     if len(sources) > 0:

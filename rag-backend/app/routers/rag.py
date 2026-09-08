@@ -85,6 +85,10 @@ class PipeRequest(BaseModel):
     # Bewertung judges (POST /api/judge, a separate browser call) can grade the
     # answer against the same sources instead of their own knowledge.
     chat_id: str | None = None
+    # OWUI id of the assistant message this turn is producing. Keys the cached
+    # retrieval hits so the browser can ask for THIS answer's chunks
+    # (GET /api/retrieved-sources/{message_id}) and store them as its citations.
+    message_id: str | None = None
     # True when the user enabled 🌐 for this turn → the backend runs SearXNG +
     # trafilatura over user_message and injects the results.
     web_search: bool = False
@@ -219,11 +223,17 @@ async def pipe(
     # Remember what this answer was built from, keyed by chat, so the Bewertung
     # judges can grade it against the SAME sources (they run on a separate
     # browser call that otherwise has no context). See services/context_cache.py.
+    # The raw hits ride along keyed by message_id: the browser fetches them back
+    # from /api/retrieved-sources once the answer is done and stores them as the
+    # chat's citations, so what's persisted is exactly what the LLM was fed.
     context_cache.store(
         req.chat_id,
         context=context,
         web=(web_ctx if web_results else ""),
         question=req.user_message,
+        hits=hits_info,
+        user_id=req.user_id,
+        message_id=req.message_id,
     )
 
     # Ground the model in the actual current date — without this it guesses

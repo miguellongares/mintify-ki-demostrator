@@ -2,7 +2,6 @@
 	import { getContext, onMount, tick } from 'svelte';
 	import Modal from '$lib/components/common/Modal.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 	const i18n = getContext('i18n');
 
@@ -91,24 +90,42 @@
 						</div>
 
 						{#if document.source?.name}
-							<Tooltip
-								className="w-fit"
-								content={$i18n.t('Open file')}
-								placement="top-start"
-								tippyOptions={{ duration: [500, 0] }}
-							>
+							<!-- MINTIFY: a document citation names its source but never links to
+							     the file itself. Uploaded documents are not handed back out as
+							     downloads (this used to build a files content link from
+							     metadata.file_id), so only a real external URL (web-search
+							     results) stays clickable. -->
+							{@const externalUrl = document.source?.url?.includes('http')
+								? document.source.url
+								: null}
+							{#if externalUrl}
+								<Tooltip
+									className="w-fit"
+									content={$i18n.t('Open file')}
+									placement="top-start"
+									tippyOptions={{ duration: [500, 0] }}
+								>
+									<div class="text-sm dark:text-gray-400 flex items-center gap-2 w-fit">
+										<a
+											class="hover:text-gray-500 dark:hover:text-gray-100 underline grow"
+											href={externalUrl}
+											target="_blank"
+										>
+											{decodeString(document?.metadata?.name ?? document.source.name)}
+										</a>
+										{#if document?.metadata?.page}
+											<span class="text-xs text-gray-500 dark:text-gray-400">
+												({$i18n.t('page')}
+												{document.metadata.page + 1})
+											</span>
+										{/if}
+									</div>
+								</Tooltip>
+							{:else}
 								<div class="text-sm dark:text-gray-400 flex items-center gap-2 w-fit">
-									<a
-										class="hover:text-gray-500 dark:hover:text-gray-100 underline grow"
-										href={document?.metadata?.file_id
-											? `${WEBUI_API_BASE_URL}/files/${document?.metadata?.file_id}/content${document?.metadata?.page !== undefined ? `#page=${document.metadata.page + 1}` : ''}`
-											: document.source?.url?.includes('http')
-												? document.source.url
-												: `#`}
-										target="_blank"
-									>
+									<span class="grow">
 										{decodeString(document?.metadata?.name ?? document.source.name)}
-									</a>
+									</span>
 									{#if document?.metadata?.page}
 										<span class="text-xs text-gray-500 dark:text-gray-400">
 											({$i18n.t('page')}
@@ -116,7 +133,7 @@
 										</span>
 									{/if}
 								</div>
-							</Tooltip>
+							{/if}
 							{#if showRelevance}
 								<div class="text-sm font-medium dark:text-gray-300 mt-2">
 									{$i18n.t('Relevance')}

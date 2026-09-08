@@ -140,6 +140,16 @@ def _extract_chat_id(body: dict) -> str | None:
     return None
 
 
+def _extract_message_id(body: dict) -> str | None:
+    """OWUI id of the assistant message being generated (body.metadata.message_id).
+    The rag-backend keys this turn's retrieved chunks by it so the browser can
+    fetch them back and store them as the answer's citations."""
+    meta = body.get("metadata") if isinstance(body, dict) else None
+    if isinstance(meta, dict) and meta.get("message_id"):
+        return str(meta["message_id"])
+    return None
+
+
 def _web_search_enabled(body: dict) -> bool:
     """True when the user toggled 🌐 web search for this turn.
 
@@ -329,6 +339,7 @@ class Pipeline:
             "file_ids": file_ids,
             "user_id": _extract_user_id(body),
             "chat_id": _extract_chat_id(body),
+            "message_id": _extract_message_id(body),
             "web_search": web_search,
             "thinking": thinking,
             "kompetenz_capability": kompetenz_capability,
