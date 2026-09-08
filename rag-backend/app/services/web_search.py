@@ -207,6 +207,19 @@ class WebSearcher:
             print(f"[RAG][web] SearXNG query failed: {e}", flush=True)
             return []
 
+        # A search where every engine is blocked comes back as HTTP 200 with an
+        # empty `results` list, so without this line the whole feature fails
+        # silently — the only symptom was "0 usable sources" upstream, with no
+        # hint that SearXNG itself found nothing. `unresponsive_engines` names
+        # the engines that refused us (CAPTCHA, rate limit, …).
+        if not (data.get("results") or []):
+            print(
+                f"[RAG][web] SearXNG returned 0 results for {query!r} — "
+                f"unresponsive engines: {data.get('unresponsive_engines') or 'none'}",
+                flush=True,
+            )
+            return []
+
         hits: list[dict] = []
         seen: set[str] = set()
         for item in data.get("results") or []:

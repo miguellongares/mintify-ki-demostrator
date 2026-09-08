@@ -27,3 +27,44 @@ search:
 
 ui:
   static_use_hash: true
+
+# Engine overrides on top of the defaults.
+#
+# September 2026: web search silently returned nothing. Every engine SearXNG
+# enables by default for the `general` category was refusing us — verified by
+# querying each one individually from inside the network:
+#
+#   brave        Suspended: too many requests
+#   duckduckgo   CAPTCHA
+#   startpage    Suspended: CAPTCHA
+#   qwant        access denied
+#   google       HTTP 200 with 0 results (consent/bot wall, no error reported)
+#   wikipedia    0 `results` (it answers in `infoboxes`, which we don't read)
+#
+# The engines below are NOT enabled by default but do answer us, verified one by
+# one on German finance queries. The blocked ones above stay enabled on purpose:
+# SearXNG aggregates whatever responds, so they contribute again as soon as they
+# let us back in.
+#
+# Why several and not just bing: bing carries most queries well ("Inflation
+# Deutschland 2026" → statista + destatis) but returns a SERP unrelated to the
+# query on a minority of them ("Kryptowährung Steuer Deutschland Haltefrist" →
+# Italian login pages). gmx/zapmeta/yandex answered that same query with exactly
+# the right German sources. Engines that responded but in the wrong language
+# (quark, 360search, baidu, sogou → Chinese results) are deliberately left off.
+#
+# Re-check a single engine with:
+#   docker exec mintify-rag-service python -c "import httpx;print(httpx.get(
+#     'http://searxng:8080/search',
+#     params={'q':'test','format':'json','engines':'bing'}).json())"
+engines:
+  - name: bing
+    disabled: false
+  - name: bing news
+    disabled: false
+  - name: gmx           # German portal search — strongest on German content
+    disabled: false
+  - name: zapmeta
+    disabled: false
+  - name: yandex
+    disabled: false
