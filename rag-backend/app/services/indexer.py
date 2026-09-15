@@ -8,9 +8,10 @@ single RAG system. It no longer reads files from disk or parses PDFs itself.
 
 Per file:
   1. Fetch {filename, content, hash} from OWUI by file id
-  2. Skip if (file_id → hash) is unchanged since last index (dedup)
+  2. Skip if (file_id → hash + chunking scheme) is unchanged since last index
   3. Delete any existing points for this file id (so re-index / shrink is clean)
-  4. Split content into overlapping chunks (chunk_size / chunk_overlap)
+  4. Split content along its structure — headings, tables, lists, sentences
+     (services/chunker.py), NOT every N characters
   5. Embed each chunk and upsert into Qdrant
 
 Deterministic Qdrant point IDs:
@@ -47,9 +48,17 @@ from qdrant_client.models import (
 )
 
 from app.config import Settings
+from app.services.chunker import chunk_markdown
 from app.services.embedder import Embedder
 from app.services.owui_client import OWUIClient
 from app.services.sparse_embedder import SparseEmbedder
+
+
+# Identifies the chunking scheme the points in Qdrant were built with. It is
+# part of the dedup key (see _index_record), so bumping it makes a plain
+# POST /api/sync re-index every file instead of skipping it as "unchanged" and
+# leaving chunks with the old boundaries in the collection.
+CHUNK_SCHEME = "v2-structured"
 
 
 class Indexer:
@@ -222,7 +231,10 @@ class Indexer:
                 flush=True,
             )
 
-        h = record.get("hash") or hashlib.md5(content.encode("utf-8")).hexdigest()
+        content_hash = record.get("hash") or hashlib.md5(content.encode("utf-8")).hexdigest()
+        # The chunking scheme is part of the key: same text + a new chunker
+        # still has to be re-indexed.
+        h = f"{content_hash}:{CHUNK_SCHEME}"
         if self._indexed.get(file_id) == h:
             # Unchanged since last index.
             return 0
@@ -356,15 +368,11 @@ class Indexer:
             print(f"[RAG] Could not pre-fetch indexed files: {e}")
 
     def _chunk_text(self, text: str) -> list[str]:
-        """Split text into overlapping fixed-size chunks. Overlap prevents context
-        loss at chunk boundaries."""
-        size = self._settings.chunk_size
-        overlap = self._settings.chunk_overlap
-        chunks, start = [], 0
-        while start < len(text):
-            end = min(start + size, len(text))
-            chunks.append(text[start:end])
-            if end == len(text):
-                break
-            start += size - overlap
-        return chunks
+        """Split text along its structure (headings, tables, lists, sentences)
+        instead of every N characters — see services/chunker.py."""
+        return chunk_markdown(
+            text,
+            size=self._settings.chunk_size,
+            overlap=self._settings.chunk_overlap,
+            max_size=self._settings.chunk_max_size,
+        )

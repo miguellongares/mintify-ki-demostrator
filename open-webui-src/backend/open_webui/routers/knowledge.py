@@ -2,6 +2,9 @@ from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 import logging
+import os
+
+import aiohttp
 
 from open_webui.models.knowledge import (
     Knowledges,
@@ -166,7 +169,37 @@ async def create_new_knowledge(
 ############################
 
 
-@router.post("/reindex", response_model=bool)
+# MINTIFY: re-indexing means Qdrant, not OWUI's own vector DB.
+#
+# With BYPASS_EMBEDDING_AND_RETRIEVAL=true nothing reads VECTOR_DB_CLIENT — the
+# rag-backend + Qdrant are the RAG system. The upstream implementation of this
+# endpoint rebuilt the (unused) Chroma collections and re-ran process_file on
+# every knowledge file, which also meant a docling round-trip per file. It
+# therefore did nothing for retrieval quality while looking like it did.
+#
+# It now forwards to the rag-backend's POST /api/reindex-all, which re-chunks
+# and re-embeds every OWUI file + every personal file and purges orphans. Use
+# it after a chunker, embedding-model or Qdrant-schema change.
+
+
+def _rag_reindex_url() -> str:
+    """The rag-backend's /api/reindex-all, derived from the ingest webhook URL
+    (…/api/index → …/api/reindex-all) so there is one source of truth for where
+    the rag-backend lives."""
+    base = os.environ.get("RAG_INGEST_WEBHOOK_URL", "").rstrip("/")
+    if not base:
+        return ""
+    if base.endswith("/index"):
+        base = base[: -len("/index")]
+    return f"{base}/reindex-all"
+
+
+# Re-embedding every chunk on CPU takes a while on a large corpus; the call is
+# a single request, so give it room rather than failing halfway through.
+REINDEX_TIMEOUT_SECONDS = 1800
+
+
+@router.post("/reindex")
 async def reindex_knowledge_files(request: Request, user=Depends(get_verified_user)):
     if user.role != "admin":
         raise HTTPException(
@@ -174,59 +207,48 @@ async def reindex_knowledge_files(request: Request, user=Depends(get_verified_us
             detail=ERROR_MESSAGES.UNAUTHORIZED,
         )
 
-    knowledge_bases = Knowledges.get_knowledge_bases()
+    url = _rag_reindex_url()
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="RAG_INGEST_WEBHOOK_URL is not configured",
+        )
 
-    log.info(f"Starting reindexing for {len(knowledge_bases)} knowledge bases")
+    # The rag-backend authenticates the caller against OWUI itself and requires
+    # an admin, so the user's own token is forwarded rather than a shared secret.
+    authorization = request.headers.get("authorization")
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.UNAUTHORIZED,
+        )
 
-    for knowledge_base in knowledge_bases:
-        try:
-            files = Files.get_files_by_ids(knowledge_base.data.get("file_ids", []))
-
-            try:
-                if VECTOR_DB_CLIENT.has_collection(collection_name=knowledge_base.id):
-                    VECTOR_DB_CLIENT.delete_collection(
-                        collection_name=knowledge_base.id
+    log.info(f"Reindexing Qdrant via {url}")
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=REINDEX_TIMEOUT_SECONDS)
+        ) as session:
+            async with session.post(
+                url, headers={"Authorization": authorization}
+            ) as r:
+                body = await r.json(content_type=None)
+                if r.status != 200:
+                    detail = (body or {}).get("detail") if isinstance(body, dict) else None
+                    raise HTTPException(
+                        status_code=r.status,
+                        detail=detail or f"Reindex failed ({r.status})",
                     )
-            except Exception as e:
-                log.error(f"Error deleting collection {knowledge_base.id}: {str(e)}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Error deleting vector DB collection",
-                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("Reindex request to the rag-backend failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not reach the RAG backend: {e}",
+        )
 
-            failed_files = []
-            for file in files:
-                try:
-                    process_file(
-                        request,
-                        ProcessFileForm(
-                            file_id=file.id, collection_name=knowledge_base.id
-                        ),
-                        user=user,
-                    )
-                except Exception as e:
-                    log.error(
-                        f"Error processing file {file.filename} (ID: {file.id}): {str(e)}"
-                    )
-                    failed_files.append({"file_id": file.id, "error": str(e)})
-                    continue
-
-        except Exception as e:
-            log.error(f"Error processing knowledge base {knowledge_base.id}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error processing knowledge base",
-            )
-
-        if failed_files:
-            log.warning(
-                f"Failed to process {len(failed_files)} files in knowledge base {knowledge_base.id}"
-            )
-            for failed in failed_files:
-                log.warning(f"File ID: {failed['file_id']}, Error: {failed['error']}")
-
-    log.info("Reindexing completed successfully")
-    return True
+    log.info(f"Reindexing completed: {body}")
+    return body
 
 
 ############################

@@ -37,6 +37,9 @@
 	let showResetConfirm = false;
 	let showResetUploadDirConfirm = false;
 	let showReindexConfirm = false;
+	// Re-indexing re-embeds every chunk and takes a while with no other feedback —
+	// without this the admin sees nothing happen and clicks Reindex again.
+	let reindexing = false;
 
 	let embeddingEngine = '';
 	let embeddingModel = '';
@@ -252,14 +255,24 @@
 
 <ReindexKnowledgeFilesConfirmDialog
 	bind:show={showReindexConfirm}
+	title={$i18n.t('Reindex all documents')}
+	message={$i18n.t(
+		'Every document is re-chunked and re-embedded into Qdrant. This can take a while; chats and uploaded files are not affected.'
+	)}
 	on:confirm={async () => {
+		reindexing = true;
 		const res = await reindexKnowledgeFiles(localStorage.token).catch((error) => {
 			toast.error(`${error}`);
 			return null;
 		});
+		reindexing = false;
 
 		if (res) {
-			toast.success($i18n.t('Success'));
+			// The rag-backend answers with the counts it produced; a bare "Success"
+			// would not tell the admin whether anything was actually re-indexed.
+			toast.success(
+				`${$i18n.t('Success')} — ${res.chunks ?? 0} chunks, ${res.orphans_deleted ?? 0} orphans removed`
+			);
 		}
 	}}
 />
@@ -895,7 +908,8 @@
 						</div>
 						<div class="flex items-center relative">
 							<button
-								class="text-xs"
+								class="text-xs {reindexing ? 'opacity-50' : ''}"
+								disabled={reindexing}
 								on:click={() => {
 									showReindexConfirm = true;
 								}}

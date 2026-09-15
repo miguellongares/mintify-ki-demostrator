@@ -13,7 +13,7 @@ from app.dependencies import get_extractor, get_indexer, get_owui_auth, get_pers
 from app.services.extractor import Extractor
 from app.services.indexer import Indexer
 from app.services.owui_auth import OwuiAuth
-from app.services.personal_docs import PersonalDocsStore
+from app.services.personal_docs import PersonalDocsStore, resync_all
 
 router = APIRouter()
 
@@ -125,32 +125,8 @@ async def sync_documents(
 ):
     """Backfill/repair (admin only): re-extract text for documents uploaded
     before extraction existed (or while docling was down) and (re)index every
-    personal document."""
+    personal document. Same work as the personal-docs part of /api/reindex-all."""
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
 
-    docs = store.list_all()
-    extracted = 0
-    indexed_chunks = 0
-    for doc in docs:
-        text = doc.get("text_content") or ""
-        if not text:
-            data = store.read_bytes(doc["user_id"], doc["document_id"])
-            if data is None:
-                continue
-            text = extractor.extract(doc["filename"], doc.get("content_type"), data)
-            if text:
-                store.update_text(doc["document_id"], text)
-                extracted += 1
-        indexed_chunks += indexer.index_personal_doc(
-            document_id=doc["document_id"],
-            user_id=doc["user_id"],
-            filename=doc["filename"],
-            text=text,
-        )
-    print(
-        f"[PersonalDocs] sync: {len(docs)} docs, {extracted} newly extracted,"
-        f" {indexed_chunks} chunks indexed",
-        flush=True,
-    )
-    return {"documents": len(docs), "newly_extracted": extracted, "chunks": indexed_chunks}
+    return resync_all(store, indexer, extractor)

@@ -164,3 +164,38 @@ class PersonalDocsStore:
         except FileNotFoundError:
             pass
         return True
+
+
+def resync_all(store: "PersonalDocsStore", indexer, extractor) -> dict:
+    """Re-extract missing text and (re)index every personal document.
+
+    Shared by POST /api/personal-docs/sync and the admin-wide
+    POST /api/reindex-all, so both do exactly the same thing. Extraction is
+    only attempted for documents that have no text yet — a re-index after a
+    chunker change must not depend on docling being reachable.
+    """
+    docs = store.list_all()
+    extracted = 0
+    chunks = 0
+    for doc in docs:
+        text = doc.get("text_content") or ""
+        if not text:
+            data = store.read_bytes(doc["user_id"], doc["document_id"])
+            if data is None:
+                continue
+            text = extractor.extract(doc["filename"], doc.get("content_type"), data)
+            if text:
+                store.update_text(doc["document_id"], text)
+                extracted += 1
+        chunks += indexer.index_personal_doc(
+            document_id=doc["document_id"],
+            user_id=doc["user_id"],
+            filename=doc["filename"],
+            text=text,
+        )
+    print(
+        f"[PersonalDocs] resync: {len(docs)} docs, {extracted} newly extracted,"
+        f" {chunks} chunks indexed",
+        flush=True,
+    )
+    return {"documents": len(docs), "newly_extracted": extracted, "chunks": chunks}

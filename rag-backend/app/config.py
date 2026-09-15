@@ -22,8 +22,17 @@ class Settings(BaseSettings):
     # Rewrite follow-up questions into standalone search queries via the chat
     # LLM before retrieval. Kill-switch: set false to embed the raw message.
     query_rewrite: bool = True
+    # Target chunk length. The chunker (services/chunker.py) packs whole
+    # structural blocks — headings, tables, lists, sentences — up to this size
+    # instead of cutting every N characters.
     chunk_size: int = 800
+    # Trailing context repeated in the next chunk, carried over as whole blocks
+    # (never a table), not as a blind character window.
     chunk_overlap: int = 100
+    # Hard cap for a single chunk. A block bigger than chunk_size but below this
+    # stays intact (a 1.200-char table is worth more whole than halved); larger
+    # ones are split at row/item/sentence boundaries.
+    chunk_max_size: int = 1600
     top_k: int = 5
     judge_vllm_url: str = "http://host.docker.internal:8002"
     tts_url: str = ""
