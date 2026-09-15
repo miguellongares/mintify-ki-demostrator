@@ -177,9 +177,11 @@ async def create_new_knowledge(
 # every knowledge file, which also meant a docling round-trip per file. It
 # therefore did nothing for retrieval quality while looking like it did.
 #
-# It now forwards to the rag-backend's POST /api/reindex-all, which re-chunks
-# and re-embeds every OWUI file + every personal file and purges orphans. Use
-# it after a chunker, embedding-model or Qdrant-schema change.
+# It now forwards to the rag-backend's POST /api/reindex-all, which re-extracts
+# every file's text (OWUI's own loader, current OCR settings), then re-chunks and
+# re-embeds every OWUI file + every personal file and purges orphans. Use it
+# after an extraction, chunker, embedding-model or Qdrant-schema change.
+# Re-extraction needs docling-serve up; the backend answers 503 if it isn't.
 
 
 def _rag_reindex_url() -> str:
@@ -229,7 +231,13 @@ async def reindex_knowledge_files(request: Request, user=Depends(get_verified_us
             timeout=aiohttp.ClientTimeout(total=REINDEX_TIMEOUT_SECONDS)
         ) as session:
             async with session.post(
-                url, headers={"Authorization": authorization}
+                url,
+                headers={"Authorization": authorization},
+                # Explicit rather than relying on the backend default: the button
+                # exists to fix extraction AND chunking, so the text is always
+                # re-extracted first. Callers wanting the fast chunk-only pass
+                # hit /api/reindex-all directly with {"reextract": false}.
+                json={"reextract": True},
             ) as r:
                 body = await r.json(content_type=None)
                 if r.status != 200:

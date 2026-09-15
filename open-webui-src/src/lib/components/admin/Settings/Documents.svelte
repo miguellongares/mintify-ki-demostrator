@@ -257,7 +257,7 @@
 	bind:show={showReindexConfirm}
 	title={$i18n.t('Reindex all documents')}
 	message={$i18n.t(
-		'Every document is re-chunked and re-embedded into Qdrant. This can take a while; chats and uploaded files are not affected.'
+		'Every document is extracted again and re-embedded into Qdrant. This needs the docling server and can take several minutes; chats and uploaded files are not affected.'
 	)}
 	on:confirm={async () => {
 		reindexing = true;
@@ -270,9 +270,20 @@
 		if (res) {
 			// The rag-backend answers with the counts it produced; a bare "Success"
 			// would not tell the admin whether anything was actually re-indexed.
-			toast.success(
-				`${$i18n.t('Success')} — ${res.chunks ?? 0} chunks, ${res.orphans_deleted ?? 0} orphans removed`
-			);
+			const detail = `${res.reextract?.refreshed ?? 0} re-extracted, ${
+				res.chunks ?? 0
+			} chunks, ${res.orphans_deleted ?? 0} orphans removed`;
+			// A rolled-back file means its re-extraction came back empty and the
+			// previous text was kept — silent success would hide a broken docling.
+			if (res.reextract?.rolled_back || res.reextract?.failed) {
+				toast.warning(
+					`${detail} — ${res.reextract.rolled_back ?? 0} kept old text, ${
+						res.reextract.failed ?? 0
+					} failed`
+				);
+			} else {
+				toast.success(`${$i18n.t('Success')} — ${detail}`);
+			}
 		}
 	}}
 />

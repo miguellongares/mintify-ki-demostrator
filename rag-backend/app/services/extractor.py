@@ -17,10 +17,10 @@ loaders/main.py):
        "do_ocr", "force_ocr", "ocr_lang", "ocr_preset"}
       → response document.md_content (markdown, incl. reconstructed tables)
       OCR params are explicit rather than left to docling-serve's own
-      defaults (see config.py docling_* settings for why: force_ocr+
-      ocr_lang measurably improved German OCR accuracy in testing, and
-      ocr_preset must stay "auto" — this deployment 404s on any other
-      preset value).
+      defaults (see config.py docling_* settings for why: force_ocr must
+      stay FALSE — it discards the PDF's embedded text layer, gluing words
+      together and destroying German umlauts — and ocr_preset must stay
+      "auto", this deployment 404s on any other preset value).
   - the result is passed through ftfy.fix_text(), same as OWUI's Loader.load()
 
 If docling is unreachable (tunnel down), the file is still stored and
@@ -52,7 +52,7 @@ class Extractor:
         self,
         docling_url: str,
         do_ocr: bool = True,
-        force_ocr: bool = True,
+        force_ocr: bool = False,
         ocr_lang: str = "de",
         ocr_preset: str = "auto",
     ):
@@ -61,6 +61,17 @@ class Extractor:
         self._force_ocr = force_ocr
         self._ocr_lang = ocr_lang
         self._ocr_preset = ocr_preset
+
+    def is_available(self) -> bool:
+        """True if docling-serve answers. Checked before a bulk re-extraction so
+        the common failure (RunPod tunnel down) is reported up front instead of
+        after every file has already failed."""
+        try:
+            r = httpx.get(f"{self._docling_url}/health", timeout=5.0)
+            return r.status_code == 200
+        except Exception as e:
+            print(f"[RAG] docling-serve unreachable at {self._docling_url}: {e}", flush=True)
+            return False
 
     def extract(self, filename: str, content_type: str | None, data: bytes) -> str:
         try:

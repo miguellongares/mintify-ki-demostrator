@@ -1793,7 +1793,10 @@ DOCLING_DO_OCR = PersistentConfig(
 DOCLING_FORCE_OCR = PersistentConfig(
     "DOCLING_FORCE_OCR",
     "rag.docling_force_ocr",
-    os.getenv("DOCLING_FORCE_OCR", "true").lower() == "true",
+    # Default flipped to false — see rag-backend/app/config.py for the A/B
+    # measurement: force_ocr discards the PDF text layer, gluing words together
+    # and destroying German umlauts. docker-compose sets this explicitly too.
+    os.getenv("DOCLING_FORCE_OCR", "false").lower() == "true",
 )
 
 DOCLING_OCR_LANG = PersistentConfig(

@@ -182,6 +182,65 @@ class Indexer:
         except Exception as e:
             print(f"[RAG] delete personal points failed for {document_id}: {e}", flush=True)
 
+    def reextract_all(self) -> dict:
+        """Ask OWUI to re-run its loader over every file it knows about.
+
+        The rag-backend only ever reads OWUI's *stored* text, so after an
+        extraction-config change (DOCLING_FORCE_OCR, ocr_lang, a docling
+        upgrade) re-chunking alone would keep feeding on the old extraction.
+        This refreshes the source text first; OWUI also updates the file hash,
+        which is what makes the following sync_all() re-index it.
+
+        A loader failure leaves OWUI's stored text untouched (the exception
+        happens before it writes). The dangerous case is a *successful* call
+        that returns nothing usable — docling answering 200 with no markdown —
+        which would overwrite good text with a placeholder. So each file's text
+        is snapshotted first and written back if the new extraction looks
+        broken; nothing is ever silently replaced by less.
+        """
+        files = self._owui.list_files()
+        refreshed = restored = failed = 0
+        for record in files:
+            file_id = record["id"]
+            before = record.get("content") or ""
+            if not self._owui.reprocess_file(file_id):
+                failed += 1
+                continue
+            after = (self._owui.fetch_file(file_id) or {}).get("content") or ""
+            if before and self._extraction_looks_broken(after, before):
+                self._owui.restore_content(file_id, before)
+                restored += 1
+                print(
+                    f"[RAG] re-extraction of '{record.get('filename')}' returned "
+                    f"{len(after)} chars vs {len(before)} before — kept the old text. "
+                    f"Check docling-serve.",
+                    flush=True,
+                )
+                continue
+            refreshed += 1
+        print(
+            f"[RAG] reextract_all: {refreshed} refreshed, {restored} rolled back, "
+            f"{failed} failed, of {len(files)} files.",
+            flush=True,
+        )
+        return {
+            "files_seen": len(files),
+            "refreshed": refreshed,
+            "rolled_back": restored,
+            "failed": failed,
+        }
+
+    @staticmethod
+    def _extraction_looks_broken(after: str, before: str) -> bool:
+        """Catastrophic loss only. A legitimate re-extraction can shrink the text
+        somewhat (forced OCR used to duplicate headers, for instance), so the
+        threshold is deliberately generous — this guards against an empty or
+        placeholder result, not against a different-but-valid extraction."""
+        stripped = after.strip()
+        if not stripped or stripped == "<No text content found>":
+            return True
+        return len(stripped) < 0.4 * len(before.strip())
+
     def reconcile(self) -> dict:
         """Drop Qdrant points whose owui_file_id no longer exists in OWUI — a safety
         net against drift (e.g. a file row removed without firing the delete webhook)."""

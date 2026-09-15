@@ -903,7 +903,7 @@
 	"References from": "Referenzen aus",
 	"Refused when it shouldn't have": "Abgelehnt, obwohl es nicht hätte abgelehnt werden sollen",
 	"Regenerate": "Neu generieren",
-	"Every document is re-chunked and re-embedded into Qdrant. This can take a while; chats and uploaded files are not affected.": "Alle Dokumente werden neu aufgeteilt und in Qdrant neu eingebettet. Das kann einen Moment dauern; Chats und hochgeladene Dateien bleiben unverändert.",
+	"Every document is extracted again and re-embedded into Qdrant. This needs the docling server and can take several minutes; chats and uploaded files are not affected.": "Alle Dokumente werden erneut ausgelesen und in Qdrant neu eingebettet. Dafür muss der docling-Server laufen; es kann einige Minuten dauern. Chats und hochgeladene Dateien bleiben unverändert.",
 	"Reindex all documents": "Alle Dokumente neu indexieren",
 	"Reindex": "Neu indexieren",
 	"Reindex Knowledge Base Vectors": "Alle Dokumente neu indexieren (Qdrant)",

@@ -12,7 +12,8 @@ POST   /api/reconcile     — drop Qdrant points whose owui_file_id no longer ex
                             in OWUI (safety net against drift).
 POST   /api/reset-collection — wipe + recreate the collection and clear the indexer
                             cache. Used by scripts/reset_rag.sh for a clean state.
-POST   /api/reindex-all   — admin one-shot: sync + personal-docs resync + reconcile.
+POST   /api/reindex-all   — admin one-shot: re-extract + sync + personal-docs
+                            resync + reconcile.
                             Backs the "Reindex" button in OWUI Admin Panel →
                             Settings → Documents, so re-indexing after a chunker
                             or embedding change is a button, not three curls.
@@ -86,27 +87,60 @@ def reset_collection(indexer: Indexer = Depends(get_indexer)):
     return indexer.reset_collection()
 
 
+class ReindexRequest(BaseModel):
+    """Body of POST /api/reindex-all. An empty body means "do everything"."""
+    # Re-run OWUI's extraction before chunking. Required after an
+    # extraction-config change (DOCLING_FORCE_OCR, ocr_lang, a docling upgrade),
+    # because re-chunking alone would keep feeding on the text OWUI already
+    # stored. Set false for a pure chunker change — much faster, and it does not
+    # need docling at all.
+    reextract: bool = True
+
+
 @router.post("/reindex-all")
 def reindex_all(
+    req: ReindexRequest = ReindexRequest(),
     user: dict = Depends(require_admin),
     indexer: Indexer = Depends(get_indexer),
     store: PersonalDocsStore = Depends(get_personal_docs),
     extractor: Extractor = Depends(get_extractor),
 ):
-    """Re-index everything: OWUI files, personal files, then drop orphans.
+    """Re-index everything: re-extract, then OWUI files, personal files, orphans.
 
-    Order matters — reconcile() runs last so it only ever purges points whose
+    Order matters twice over — re-extraction runs first so the chunker sees the
+    fresh text, and reconcile() runs last so it only ever purges points whose
     file really is gone from OWUI, never ones sync_all() was about to refresh.
 
-    Neither step re-extracts text that already exists (OWUI serves its stored
-    content, personal docs reuse text_content), so this works with docling
-    offline — which is exactly the situation after a chunker change.
+    Without `reextract` nothing is re-extracted (OWUI serves its stored content,
+    personal docs reuse text_content), so the call works with docling offline —
+    which is what you want for a pure chunker change.
     """
-    print(f"[RAG] /reindex-all requested by {user.get('email')}", flush=True)
+    print(
+        f"[RAG] /reindex-all requested by {user.get('email')} "
+        f"(reextract={req.reextract})",
+        flush=True,
+    )
+
+    reextract: dict | None = None
+    if req.reextract:
+        # Fail before touching anything: re-extraction without docling would
+        # just be one failed loader call per file.
+        if not extractor.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "docling-serve is unreachable — cannot re-extract. Start the "
+                    "RunPod tunnel, or re-run with {\"reextract\": false} to only "
+                    "re-chunk the text already stored."
+                ),
+            )
+        reextract = indexer.reextract_all()
+
     owui = indexer.sync_all()
     personal = resync_all(store, indexer, extractor)
     orphans = indexer.reconcile()
     result = {
+        "reextract": reextract,
         "owui": owui,
         "personal": personal,
         "orphans_deleted": len(orphans.get("orphans_deleted", [])),
