@@ -22,8 +22,17 @@ class Settings(BaseSettings):
     # Rewrite follow-up questions into standalone search queries via the chat
     # LLM before retrieval. Kill-switch: set false to embed the raw message.
     query_rewrite: bool = True
+    # Target chunk length. The chunker (services/chunker.py) packs whole
+    # structural blocks — headings, tables, lists, sentences — up to this size
+    # instead of cutting every N characters.
     chunk_size: int = 800
+    # Trailing context repeated in the next chunk, carried over as whole blocks
+    # (never a table), not as a blind character window.
     chunk_overlap: int = 100
+    # Hard cap for a single chunk. A block bigger than chunk_size but below this
+    # stays intact (a 1.200-char table is worth more whole than halved); larger
+    # ones are split at row/item/sentence boundaries.
+    chunk_max_size: int = 1600
     top_k: int = 5
     judge_vllm_url: str = "http://host.docker.internal:8002"
     tts_url: str = ""
@@ -50,14 +59,24 @@ class Settings(BaseSettings):
     # host port 5001; OWUI reaches it via DOCLING_SERVER_URL too).
     docling_server_url: str = "http://host.docker.internal:5001"
     # Explicit OCR config for docling-serve, instead of relying on its own
-    # undocumented defaults. Verified live against the running instance
-    # (2026-08-03): do_ocr already defaults to true there, but force_ocr+
-    # ocr_lang measurably improved German OCR accuracy on a real scanned
-    # document (e.g. "Loniares"→"Longares", "10S5S"→"10555"). ocr_preset
-    # MUST stay "auto" — this deployment 404s on any other preset value
-    # (e.g. "easyocr", "tesseract" are not enabled server-side).
+    # undocumented defaults.
+    #
+    # force_ocr=False since 2026-09-15. force_ocr renders each page to pixels,
+    # re-reads it with OCR and DISCARDS the PDF's embedded text layer — which
+    # glued words together ("derAltersvorsorge", "Werzwischen60und700") and
+    # destroyed German umlauts ("für"→"fur", "Verträge"→"Vertrage"), breaking
+    # BM25 matching on exactly the words German queries use. A/B against the
+    # live instance on Arbeitsblatt-Das-Vier-Saeulen-Modell.pdf:
+    #   force_ocr=true  → 3.8 umlauts / 9.4 glued words per 1k chars
+    #   force_ocr=false → 14.4 umlauts / 0.2 glued words per 1k chars
+    # Table reconstruction is NOT lost: docling still runs layout analysis and
+    # emits the same tables, it just fills the cells from the real characters
+    # ("Anzah1"→"Anzahl", "Unterstitzungskasse"→"Unterstützungskasse").
+    # do_ocr stays True so genuinely image-only pages are still OCR'd.
+    # ocr_preset MUST stay "auto" — this deployment 404s on any other preset
+    # value (e.g. "easyocr", "tesseract" are not enabled server-side).
     docling_do_ocr: bool = True
-    docling_force_ocr: bool = True
+    docling_force_ocr: bool = False
     docling_ocr_lang: str = "de"
     docling_ocr_preset: str = "auto"
 

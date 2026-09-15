@@ -55,12 +55,17 @@ services:
       # Personal-docs text extraction uses the SAME docling-serve instance as
       # OWUI's knowledge-base uploads (RunPod, SSH tunnel on host port 5001).
       - DOCLING_SERVER_URL=${DOCLING_SERVER_URL:-http://host.docker.internal:5001}
-      # Explicit OCR config sent on every docling-serve request — verified
-      # live against the running instance (2026-08-03): force_ocr+ocr_lang
-      # measurably improved German OCR accuracy; ocr_preset must stay "auto"
-      # (other presets like "easyocr"/"tesseract" 404 on this deployment).
+      # Explicit OCR config sent on every docling-serve request.
+      # FORCE_OCR=false since 2026-09-15: force_ocr re-reads the rendered page
+      # with OCR and DISCARDS the PDF's embedded text, which glued words
+      # together and destroyed German umlauts ("für"→"fur"). A/B measured on
+      # this corpus: umlauts 3.8→14.4 per 1k chars, glued words 9.4→0.2, and
+      # table reconstruction is unaffected (docling still does layout analysis,
+      # it just fills cells from the real characters). do_ocr stays true so
+      # genuinely image-only pages are still OCR'd.
+      # ocr_preset must stay "auto" (other presets 404 on this deployment).
       - DOCLING_DO_OCR=${DOCLING_DO_OCR:-true}
-      - DOCLING_FORCE_OCR=${DOCLING_FORCE_OCR:-true}
+      - DOCLING_FORCE_OCR=${DOCLING_FORCE_OCR:-false}
       - DOCLING_OCR_LANG=${DOCLING_OCR_LANG:-de}
       - DOCLING_OCR_PRESET=${DOCLING_OCR_PRESET:-auto}
       # Kompetenzniveau feature kill-switch (see rag-backend/app/services/level_tool.py)
@@ -159,7 +164,7 @@ services:
       # OWUI-uploaded and personal-docs files get identical OCR handling.
       # ocr_preset must stay "auto" (other presets 404 on this deployment).
       - DOCLING_DO_OCR=true
-      - DOCLING_FORCE_OCR=true
+      - DOCLING_FORCE_OCR=false
       - DOCLING_OCR_LANG=de
       - DOCLING_OCR_PRESET=auto
       - USER_PERMISSIONS_CHAT_CONTROLS=False

@@ -88,6 +88,8 @@ from open_webui.internal.db import Session, engine
 
 from open_webui.models.functions import Functions
 from open_webui.models.models import Models
+from open_webui.models.knowledge import Knowledges
+from open_webui.models.files import Files as KnowledgeFiles
 from open_webui.models.users import UserModel, Users
 from open_webui.models.chats import Chats
 
@@ -1073,6 +1075,90 @@ async def get_base_models(request: Request, user=Depends(get_admin_user)):
     return {"data": models}
 
 
+############################
+# MINTIFY: keep a model's attached Knowledge up to date.
+#
+# meta.knowledge on a model row is a SNAPSHOT taken when the model was last
+# saved in Admin Panel → Models — it embeds the knowledge base's file list as it
+# looked at that moment. Uploading a new file into that knowledge base updates
+# the `knowledge` table but NOT the model's copy, so the model kept retrieving
+# from the frozen list and the only way to refresh it was to detach the
+# knowledge base and attach it again.
+#
+# Everything downstream reads this snapshot — metadata.model.info.meta.knowledge
+# (which the MINTIFY pipeline turns into file_ids for Qdrant) and
+# metadata.files (middleware copies the same entries there) — so refreshing it
+# once, here, fixes both.
+############################
+
+
+def refresh_model_knowledge(model: dict) -> dict:
+    """Re-read every attached knowledge base so newly uploaded files are visible.
+
+    Returns a copy: `model` is a reference into request.app.state.MODELS and must
+    never be mutated in place, or one request's refresh would leak into the
+    shared registry. Entries that are not knowledge bases (single files, legacy
+    collection_name entries) and bases that no longer exist are passed through
+    untouched.
+    """
+    info = model.get("info")
+    if not isinstance(info, dict):
+        return model
+    meta = info.get("meta")
+    if not isinstance(meta, dict):
+        return model
+    knowledge = meta.get("knowledge")
+    if not isinstance(knowledge, list) or not knowledge:
+        return model
+
+    refreshed = []
+    changed = False
+    for item in knowledge:
+        if not isinstance(item, dict) or item.get("type") == "file" or not item.get("id"):
+            refreshed.append(item)
+            continue
+        try:
+            kb = Knowledges.get_knowledge_by_id(id=item["id"])
+        except Exception as e:
+            log.warning(f"Could not refresh knowledge {item.get('id')}: {e}")
+            refreshed.append(item)
+            continue
+        if not kb:
+            refreshed.append(item)
+            continue
+
+        file_ids = (kb.data or {}).get("file_ids", [])
+        files = KnowledgeFiles.get_files_by_ids(file_ids)
+        entry = {
+            **item,
+            **kb.model_dump(),
+            # Same trimmed shape the snapshot already stored. NOT
+            # FileModel.model_dump(), which carries data.content — the file's
+            # entire extracted text — and would put every attached document into
+            # the metadata of every request and every saved chat.
+            "files": [
+                {
+                    "id": f.id,
+                    "meta": f.meta,
+                    "created_at": f.created_at,
+                    "updated_at": f.updated_at,
+                }
+                for f in files
+            ],
+        }
+        if entry != item:
+            changed = True
+        refreshed.append(entry)
+
+    if not changed:
+        return model
+
+    return {
+        **model,
+        "info": {**info, "meta": {**meta, "knowledge": refreshed}},
+    }
+
+
 @app.post("/api/chat/completions")
 async def chat_completion(
     request: Request,
@@ -1094,6 +1180,10 @@ async def chat_completion(
 
             model = request.app.state.MODELS[model_id]
             model_info = Models.get_model_by_id(model_id)
+
+            # MINTIFY: the model row's knowledge list is a snapshot — re-read the
+            # attached knowledge bases so files uploaded since are retrievable.
+            model = refresh_model_knowledge(model)
 
             # Check if user has access to the model
             if not BYPASS_MODEL_ACCESS_CONTROL and user.role == "user":

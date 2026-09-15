@@ -26,9 +26,11 @@ from app.services.owui_auth import OwuiAuth
 
 router = APIRouter()
 
-# Chunks are CHUNK_SIZE (800) chars by design; this only guards against a
-# pathologically long one bloating the chat row.
-_MAX_CHUNK_CHARS = 2000
+# Chunks are ~CHUNK_SIZE chars and hard-capped at CHUNK_MAX_SIZE (plus a heading
+# prefix) by the chunker; this only guards against a pathologically long one
+# bloating the chat row. Kept comfortably above the cap so a whole table isn't
+# truncated mid-row in the citation list.
+_MAX_CHUNK_CHARS = 4000
 
 
 class RetrievedChunk(BaseModel):
