@@ -5,7 +5,7 @@
 #               vllm-qwen35 venv | gpu-mem 0.65 | max_model_len 16384
 #               reasoning-parser qwen3 | prefix-caching | thinking disabled
 #   Port 8006 → Qwen3-TTS inference server
-#               host Python (system torch 2.8.0+cu128 + FA 2.8.3)
+#               venv /workspace/tts_service/tts-venv (torch 2.8.0+cu128 + FA 2.8.3)
 #   Port 5001 → Docling-service file ingestion 
 #
 # Usage:
@@ -21,7 +21,7 @@ set -euo pipefail
 
 # ── SSH connection ────────────────────────────────────────────────────────────
 RUNPOD_HOST="63.141.33.23"
-RUNPOD_PORT="22114"
+RUNPOD_PORT="22104"
 RUNPOD_USER="root"
 SSH_KEY="$HOME/.ssh/.ssh_gpu/id_ed25519"
 SSH_OPTS="-p ${RUNPOD_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=60"
@@ -37,7 +37,7 @@ INSTANCES=(
 # Format: "NAME:PORT:TMUX_SESSION:HEALTH_PATH:START_CMD"
 # HEALTH_PATH is appended to http://localhost:PORT/ (no leading slash).
 EXTRA_SERVICES=(
-  "qwen3-tts:8006:qwen-tts:health:cd /workspace/tts_service && uvicorn main:app --host 0.0.0.0 --port 8006"
+  "qwen3-tts:8006:qwen-tts:health:cd /workspace/tts_service && source /workspace/tts_service/tts-venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8006"
   "docling:5001:docling:health:cd /workspace/docling-lab && source docling-serve/bin/activate && docling-serve run --host 0.0.0.0 --port 5001"
 )
 
