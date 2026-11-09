@@ -8,8 +8,9 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
     ports:
-      - "6333:6333"   # REST API + dashboard
-      - "6334:6334"   # gRPC
+      # Loopback only: Qdrant has no auth, and Docker-published ports bypass UFW.
+      - "127.0.0.1:6333:6333"   # REST API + dashboard
+      - "127.0.0.1:6334:6334"   # gRPC
     restart: unless-stopped
 
   # Self-hosted metasearch engine for OWUI's web search. Replaces DuckDuckGo,
@@ -81,7 +82,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8088:8080"   # optional: exposed for local debugging --> EXTRA it was 8080:8080 but changed for server
+      - "127.0.0.1:8088:8080"   # loopback only (Caddy proxies /rag-api/*); optional: exposed for local debugging --> EXTRA it was 8080:8080 but changed for server
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
       interval: 30s
@@ -111,7 +112,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "9099:9099"
+      - "127.0.0.1:9099:9099"   # loopback only; OWUI reaches it via http://pipelines:9099
     restart: unless-stopped
 
   open-webui:
@@ -173,7 +174,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "3000:8080"
+      - "127.0.0.1:3000:8080"   # loopback only; Caddy proxies everything else here
     restart: unless-stopped
 
 volumes: {}
