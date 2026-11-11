@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 
 from app.config import settings
 from app.dependencies import init_singletons
+from app.proxy_guard import proxy_guard
 from app.routers import (
     index,
     judge,
@@ -44,6 +45,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Registered after CORS so it is the OUTERMOST layer: proxied requests to
+# internal routes are rejected before anything else runs. See proxy_guard.py.
+app.middleware("http")(proxy_guard)
 
 app.include_router(models.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
